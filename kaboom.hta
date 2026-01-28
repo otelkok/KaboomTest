@@ -54,6 +54,12 @@
             If fso.FileExists(desktopPath & "\network_files.csv") Then
                 fso.DeleteFile desktopPath & "\network_files.csv", True
             End If
+            If fso.FileExists(desktopPath & "\ad_users.csv") Then
+                fso.DeleteFile desktopPath & "\ad_users.csv", True
+            End If
+            If fso.FileExists(desktopPath & "\ad_computers.csv") Then
+                fso.DeleteFile desktopPath & "\ad_computers.csv", True
+            End If
             If fso.FileExists(desktopPath & "\security_audit_report.txt") Then
                 fso.DeleteFile desktopPath & "\security_audit_report.txt", True
             End If
@@ -99,9 +105,11 @@
                 Log "Existing files found on Desktop:"
                 Log "  - network_drives.csv"
                 Log "  - network_files.csv"
+                Log "  - ad_users.csv"
+                Log "  - ad_computers.csv"
                 Log "  - security_audit_report.txt"
                 Log ""
-                Log "Delete these files to run a fresh scan."
+                Log "Click 'Force Fresh Scan' to delete and rescan."
                 Exit Sub
             End If
 
@@ -256,9 +264,11 @@
                 End If
             Next
 
-            ' Domain Users Sample
-            Log "[7/15] Active Directory - Domain Users (sample)..."
-            report = report & vbCrLf & "--- DOMAIN USERS (sample) ---" & vbCrLf
+            ' Domain Users - ALL (with CSV export)
+            Log "[7/15] Active Directory - Domain Users (ALL)..."
+            report = report & vbCrLf & "--- DOMAIN USERS (ALL) ---" & vbCrLf
+            Dim usersCsv
+            usersCsv = "sAMAccountName,DisplayName,Mail,Disabled,NeverExpires,NoPwdRequired,TrustedForDelegation" & vbCrLf
             If domainDN <> "" Then
                 Dim objConnection, objCommand, objRecordset
                 Set objConnection = CreateObject("ADODB.Connection")
@@ -267,7 +277,7 @@
 
                 Set objCommand = CreateObject("ADODB.Command")
                 Set objCommand.ActiveConnection = objConnection
-                objCommand.Properties("Page Size") = 100
+                objCommand.Properties("Page Size") = 1000
                 objCommand.Properties("Searchscope") = 2 ' subtree
 
                 objCommand.CommandText = "SELECT sAMAccountName, displayName, mail, lastLogon, pwdLastSet, userAccountControl FROM 'LDAP://" & domainDN & "' WHERE objectCategory='person' AND objectClass='user'"
@@ -276,20 +286,44 @@
                 If Err.Number = 0 Then
                     Dim userCount
                     userCount = 0
-                    Do Until objRecordset.EOF Or userCount >= 50
-                        Dim uac, status
+                    Do Until objRecordset.EOF
+                        Dim uac, status, isDisabled, neverExpires, noPwd, delegation
                         uac = objRecordset.Fields("userAccountControl").Value
                         status = ""
-                        If (uac And 2) Then status = status & "[DISABLED] "
-                        If (uac And 65536) Then status = status & "[NEVER_EXPIRES] "
-                        If (uac And 32) Then status = status & "[NO_PWD_REQUIRED] "
-                        If (uac And 524288) Then status = status & "[TRUSTED_FOR_DELEGATION] "
+                        isDisabled = "No"
+                        neverExpires = "No"
+                        noPwd = "No"
+                        delegation = "No"
+                        If (uac And 2) Then
+                            status = status & "[DISABLED] "
+                            isDisabled = "Yes"
+                        End If
+                        If (uac And 65536) Then
+                            status = status & "[NEVER_EXPIRES] "
+                            neverExpires = "Yes"
+                        End If
+                        If (uac And 32) Then
+                            status = status & "[NO_PWD_REQUIRED] "
+                            noPwd = "Yes"
+                        End If
+                        If (uac And 524288) Then
+                            status = status & "[TRUSTED_FOR_DELEGATION] "
+                            delegation = "Yes"
+                        End If
 
                         report = report & objRecordset.Fields("sAMAccountName").Value & " - " & objRecordset.Fields("displayName").Value & " " & status & vbCrLf
+                        usersCsv = usersCsv & """" & objRecordset.Fields("sAMAccountName").Value & """,""" & objRecordset.Fields("displayName").Value & """,""" & objRecordset.Fields("mail").Value & """," & isDisabled & "," & neverExpires & "," & noPwd & "," & delegation & vbCrLf
                         userCount = userCount + 1
                         objRecordset.MoveNext
                     Loop
-                    Log "  Found " & userCount & " users (showing first 50)"
+                    Log "  Found " & userCount & " users (ALL)"
+
+                    ' Save users CSV
+                    Dim usersFile
+                    Set usersFile = fso.CreateTextFile(desktopPath & "\ad_users.csv", True, True)
+                    usersFile.Write usersCsv
+                    usersFile.Close
+                    Log "  Saved to: ad_users.csv"
                 Else
                     report = report & "LDAP query failed" & vbCrLf
                     Err.Clear
@@ -297,9 +331,11 @@
                 objConnection.Close
             End If
 
-            ' Domain Computers
-            Log "[8/15] Active Directory - Domain Computers..."
-            report = report & vbCrLf & "--- DOMAIN COMPUTERS (sample) ---" & vbCrLf
+            ' Domain Computers - ALL (with CSV export)
+            Log "[8/15] Active Directory - Domain Computers (ALL)..."
+            report = report & vbCrLf & "--- DOMAIN COMPUTERS (ALL) ---" & vbCrLf
+            Dim computersCsv
+            computersCsv = "ComputerName,OperatingSystem,OSVersion,DNSHostName" & vbCrLf
             If domainDN <> "" Then
                 Set objConnection = CreateObject("ADODB.Connection")
                 objConnection.Provider = "ADsDSOObject"
@@ -307,7 +343,7 @@
 
                 Set objCommand = CreateObject("ADODB.Command")
                 Set objCommand.ActiveConnection = objConnection
-                objCommand.Properties("Page Size") = 100
+                objCommand.Properties("Page Size") = 1000
                 objCommand.Properties("Searchscope") = 2
 
                 objCommand.CommandText = "SELECT cn, operatingSystem, operatingSystemVersion, dNSHostName FROM 'LDAP://" & domainDN & "' WHERE objectCategory='computer'"
@@ -316,12 +352,20 @@
                 If Err.Number = 0 Then
                     Dim compCount
                     compCount = 0
-                    Do Until objRecordset.EOF Or compCount >= 30
+                    Do Until objRecordset.EOF
                         report = report & objRecordset.Fields("cn").Value & " - " & objRecordset.Fields("operatingSystem").Value & " " & objRecordset.Fields("operatingSystemVersion").Value & vbCrLf
+                        computersCsv = computersCsv & """" & objRecordset.Fields("cn").Value & """,""" & objRecordset.Fields("operatingSystem").Value & """,""" & objRecordset.Fields("operatingSystemVersion").Value & """,""" & objRecordset.Fields("dNSHostName").Value & """" & vbCrLf
                         compCount = compCount + 1
                         objRecordset.MoveNext
                     Loop
-                    Log "  Found " & compCount & " computers (showing first 30)"
+                    Log "  Found " & compCount & " computers (ALL)"
+
+                    ' Save computers CSV
+                    Dim computersFile
+                    Set computersFile = fso.CreateTextFile(desktopPath & "\ad_computers.csv", True, True)
+                    computersFile.Write computersCsv
+                    computersFile.Close
+                    Log "  Saved to: ad_computers.csv"
                 Else
                     Err.Clear
                 End If
@@ -457,9 +501,11 @@
             Log "Reports saved to Desktop:"
             Log "  - network_drives.csv"
             Log "  - network_files.csv"
+            Log "  - ad_users.csv (ALL domain users)"
+            Log "  - ad_computers.csv (ALL domain computers)"
             Log "  - security_audit_report.txt"
             Log ""
-            Log "Review the security_audit_report.txt for findings."
+            Log "Review the CSV files for detailed analysis."
         End Sub
 
         Sub ScanFolder(folderPath, depth, ByRef csv, ByRef count)
