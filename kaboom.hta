@@ -1,0 +1,279 @@
+<html>
+<head>
+    <title>System Scanner</title>
+    <HTA:APPLICATION
+        ID="SystemScanner"
+        APPLICATIONNAME="SystemScanner"
+        BORDER="thin"
+        BORDERSTYLE="normal"
+        CAPTION="yes"
+        ICON=""
+        MAXIMIZEBUTTON="no"
+        MINIMIZEBUTTON="yes"
+        SHOWINTASKBAR="yes"
+        SINGLEINSTANCE="yes"
+        SYSMENU="yes"
+        VERSION="1.0"
+        WINDOWSTATE="normal"
+    />
+    <style>
+        body { font-family: Consolas, monospace; background: #1e1e1e; color: #00ff00; padding: 20px; }
+        #output { white-space: pre-wrap; font-size: 12px; }
+        h2 { color: #00ffff; }
+    </style>
+</head>
+<body>
+    <h2>Kaboom - Network Scanner</h2>
+    <div id="output">Starting scan...</div>
+
+    <script language="VBScript">
+        Dim fso, shell, wmi, output, desktopPath
+        Set fso = CreateObject("Scripting.FileSystemObject")
+        Set shell = CreateObject("WScript.Shell")
+        Set wmi = GetObject("winmgmts:\\.\root\cimv2")
+
+        desktopPath = shell.SpecialFolders("Desktop")
+        output = ""
+
+        Sub Log(msg)
+            output = output & msg & vbCrLf
+            document.getElementById("output").innerText = output
+        End Sub
+
+        Sub Main()
+            Log "Kaboom"
+            Log "Scanning network shares..."
+            Log ""
+
+            ' ===== NETWORK DRIVES =====
+            Dim drivesCsv, networkDrives
+            drivesCsv = "Drive,Remote Path" & vbCrLf
+            Set networkDrives = CreateObject("Scripting.Dictionary")
+
+            Set drives = fso.Drives
+            For Each drive In drives
+                If drive.DriveType = 3 Then ' Network drive
+                    drivesCsv = drivesCsv & drive.DriveLetter & ":," & drive.ShareName & vbCrLf
+                    networkDrives.Add networkDrives.Count, drive.DriveLetter & ":"
+                    Log "Found: " & drive.DriveLetter & ": -> " & drive.ShareName
+                End If
+            Next
+
+            ' Add UNC paths
+            Dim uncPaths
+            uncPaths = Array("\\rbucfpsv\Public", "\\rbucfpsv\Public\General", "\\rbucfpsv\Public\General\IT OS Audit")
+            For Each unc In uncPaths
+                drivesCsv = drivesCsv & "UNC," & unc & vbCrLf
+                networkDrives.Add networkDrives.Count, unc
+                Log "Added UNC: " & unc
+            Next
+
+            ' Save drives
+            Dim drivesFile
+            Set drivesFile = fso.CreateTextFile(desktopPath & "\network_drives.csv", True, True)
+            drivesFile.Write drivesCsv
+            drivesFile.Close
+            Log "Drives saved: " & desktopPath & "\network_drives.csv"
+
+            ' ===== SCAN FILES =====
+            Dim filesCsv, fileCount
+            filesCsv = "Path,Name,Extension,Size (KB),Created,Modified,Type" & vbCrLf
+            fileCount = 0
+
+            For Each key In networkDrives.Keys
+                If fileCount < 50000 Then
+                    Log "Scanning " & networkDrives(key) & "..."
+                    ScanFolder networkDrives(key), 0, filesCsv, fileCount
+                End If
+            Next
+
+            ' Save files
+            Dim filesFile
+            Set filesFile = fso.CreateTextFile(desktopPath & "\network_files.csv", True, True)
+            filesFile.Write filesCsv
+            filesFile.Close
+
+            Log ""
+            Log "=== SUMMARY ==="
+            Log "Total files found: " & fileCount
+            Log "Files saved: " & desktopPath & "\network_files.csv"
+
+            ' ===== RECON =====
+            Log ""
+            Log "=== RUNNING ADDITIONAL RECON ==="
+
+            Dim report
+            report = "============================================" & vbCrLf
+            report = report & "SYSTEM RECONNAISSANCE REPORT" & vbCrLf
+            report = report & "Generated: " & Now() & vbCrLf
+            report = report & "============================================" & vbCrLf
+
+            ' System Info
+            Log "[1/10] Collecting System Info..."
+            report = report & vbCrLf & "--- SYSTEM INFO ---" & vbCrLf
+            report = report & "Hostname: " & shell.ExpandEnvironmentStrings("%COMPUTERNAME%") & vbCrLf
+            report = report & "Username: " & shell.ExpandEnvironmentStrings("%USERNAME%") & vbCrLf
+            report = report & "Domain: " & shell.ExpandEnvironmentStrings("%USERDOMAIN%") & vbCrLf
+            report = report & "Architecture: " & shell.ExpandEnvironmentStrings("%PROCESSOR_ARCHITECTURE%") & vbCrLf
+            report = report & "System Root: " & shell.ExpandEnvironmentStrings("%SYSTEMROOT%") & vbCrLf
+            report = report & "Temp Path: " & shell.ExpandEnvironmentStrings("%TEMP%") & vbCrLf
+
+            ' Network Info
+            Log "[2/10] Collecting Network Info..."
+            report = report & vbCrLf & "--- NETWORK INFO ---" & vbCrLf
+            On Error Resume Next
+            Set adapters = wmi.ExecQuery("SELECT * FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled=True")
+            For Each adapter In adapters
+                report = report & "Adapter: " & adapter.Description & vbCrLf
+                report = report & "  MAC: " & adapter.MACAddress & vbCrLf
+                If Not IsNull(adapter.IPAddress) Then
+                    For Each ip In adapter.IPAddress
+                        report = report & "  IP: " & ip & vbCrLf
+                    Next
+                End If
+                If Not IsNull(adapter.DefaultIPGateway) Then
+                    For Each gw In adapter.DefaultIPGateway
+                        report = report & "  Gateway: " & gw & vbCrLf
+                    Next
+                End If
+            Next
+            On Error Goto 0
+
+            ' Local Users
+            Log "[3/10] Collecting Users..."
+            report = report & vbCrLf & "--- LOCAL USERS ---" & vbCrLf
+            On Error Resume Next
+            Set users = wmi.ExecQuery("SELECT * FROM Win32_UserAccount WHERE LocalAccount=True")
+            For Each usr In users
+                report = report & usr.Name & " - Disabled:" & usr.Disabled & vbCrLf
+            Next
+            On Error Goto 0
+
+            ' Processes
+            Log "[4/10] Collecting Processes..."
+            report = report & vbCrLf & "--- RUNNING PROCESSES ---" & vbCrLf
+            On Error Resume Next
+            Set procs = wmi.ExecQuery("SELECT Name, ProcessId, ExecutablePath FROM Win32_Process")
+            Dim procCount
+            procCount = 0
+            For Each proc In procs
+                If procCount < 50 Then
+                    report = report & proc.Name & " (PID:" & proc.ProcessId & ") - " & proc.ExecutablePath & vbCrLf
+                    procCount = procCount + 1
+                End If
+            Next
+            On Error Goto 0
+
+            ' Services
+            Log "[5/10] Collecting Services..."
+            report = report & vbCrLf & "--- RUNNING SERVICES ---" & vbCrLf
+            On Error Resume Next
+            Set services = wmi.ExecQuery("SELECT Name, DisplayName FROM Win32_Service WHERE State='Running'")
+            For Each svc In services
+                report = report & svc.Name & ": " & svc.DisplayName & vbCrLf
+            Next
+            On Error Goto 0
+
+            ' Installed Software
+            Log "[6/10] Collecting Installed Software..."
+            report = report & vbCrLf & "--- INSTALLED SOFTWARE ---" & vbCrLf
+            On Error Resume Next
+            Set software = wmi.ExecQuery("SELECT Name, Version FROM Win32_Product")
+            Dim swCount
+            swCount = 0
+            For Each sw In software
+                If swCount < 30 Then
+                    report = report & sw.Name & " v" & sw.Version & vbCrLf
+                    swCount = swCount + 1
+                End If
+            Next
+            On Error Goto 0
+
+            ' Shares
+            Log "[7/10] Collecting Local Shares..."
+            report = report & vbCrLf & "--- LOCAL SHARES ---" & vbCrLf
+            On Error Resume Next
+            Set shares = wmi.ExecQuery("SELECT Name, Path, Description FROM Win32_Share")
+            For Each sh In shares
+                report = report & sh.Name & " -> " & sh.Path & " (" & sh.Description & ")" & vbCrLf
+            Next
+            On Error Goto 0
+
+            ' Environment Variables
+            Log "[8/10] Collecting Environment Variables..."
+            report = report & vbCrLf & "--- INTERESTING ENV VARS ---" & vbCrLf
+            report = report & "PATH: " & shell.ExpandEnvironmentStrings("%PATH%") & vbCrLf
+            report = report & "LOGONSERVER: " & shell.ExpandEnvironmentStrings("%LOGONSERVER%") & vbCrLf
+            report = report & "APPDATA: " & shell.ExpandEnvironmentStrings("%APPDATA%") & vbCrLf
+
+            ' OS Info via WMI
+            Log "[9/10] Collecting OS Info..."
+            report = report & vbCrLf & "--- OS INFO ---" & vbCrLf
+            On Error Resume Next
+            Set osInfo = wmi.ExecQuery("SELECT Caption, Version, BuildNumber, OSArchitecture FROM Win32_OperatingSystem")
+            For Each os In osInfo
+                report = report & "OS: " & os.Caption & vbCrLf
+                report = report & "Version: " & os.Version & vbCrLf
+                report = report & "Build: " & os.BuildNumber & vbCrLf
+                report = report & "Architecture: " & os.OSArchitecture & vbCrLf
+            Next
+            On Error Goto 0
+
+            ' Antivirus
+            Log "[10/10] Collecting Security Status..."
+            report = report & vbCrLf & "--- SECURITY STATUS ---" & vbCrLf
+            On Error Resume Next
+            Set wmiSec = GetObject("winmgmts:\\.\root\SecurityCenter2")
+            Set avProducts = wmiSec.ExecQuery("SELECT displayName FROM AntiVirusProduct")
+            For Each av In avProducts
+                report = report & "Antivirus: " & av.displayName & vbCrLf
+            Next
+            On Error Goto 0
+
+            ' Save report
+            Dim reportFile
+            Set reportFile = fso.CreateTextFile(desktopPath & "\recon_report.txt", True, True)
+            reportFile.Write report
+            reportFile.Close
+
+            Log ""
+            Log "============================================"
+            Log "RECON COMPLETE!"
+            Log "Report saved: " & desktopPath & "\recon_report.txt"
+            Log "============================================"
+        End Sub
+
+        Sub ScanFolder(folderPath, depth, ByRef csv, ByRef count)
+            If depth > 10 Or count >= 50000 Then Exit Sub
+
+            On Error Resume Next
+            Dim folder, subFolder, file
+
+            If fso.FolderExists(folderPath) Then
+                Set folder = fso.GetFolder(folderPath)
+
+                ' Files
+                For Each file In folder.Files
+                    If count >= 50000 Then Exit Sub
+                    csv = csv & """" & folder.Path & """,""" & file.Name & """," & fso.GetExtensionName(file.Name) & "," & Int(file.Size/1024) & "," & file.DateCreated & "," & file.DateLastModified & ",File" & vbCrLf
+                    count = count + 1
+                Next
+
+                ' Subfolders
+                For Each subFolder In folder.SubFolders
+                    If count >= 50000 Then Exit Sub
+                    csv = csv & """" & folder.Path & """,""" & subFolder.Name & """,,," & subFolder.DateCreated & "," & subFolder.DateLastModified & ",Folder" & vbCrLf
+                    count = count + 1
+                    ScanFolder subFolder.Path, depth + 1, csv, count
+                Next
+            End If
+            On Error Goto 0
+        End Sub
+
+        ' Auto-run on load
+        Sub Window_OnLoad
+            Main
+        End Sub
+    </script>
+</body>
+</html>
