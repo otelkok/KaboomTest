@@ -18,13 +18,17 @@
     />
     <style>
         body { font-family: Consolas, monospace; background: #1e1e1e; color: #00ff00; padding: 20px; }
-        #output { white-space: pre-wrap; font-size: 12px; }
+        #output { white-space: pre-wrap; font-size: 12px; height: 500px; overflow-y: auto; }
         h2 { color: #00ffff; }
     </style>
 </head>
 <body>
-    <h2>Kaboom - Network Scanner</h2>
-    <div id="output">Starting scan...</div>
+    <h2>Kaboom - Security Scanner</h2>
+    <div style="margin-bottom: 10px;">
+        <button onclick="Main()" style="background:#333;color:#0f0;border:1px solid #0f0;padding:5px 15px;cursor:pointer;">Run Scan</button>
+        <button onclick="ForceScan()" style="background:#333;color:#ff0;border:1px solid #ff0;padding:5px 15px;cursor:pointer;margin-left:10px;">Force Fresh Scan</button>
+    </div>
+    <div id="output" style="height:450px;">Waiting to start...</div>
 
     <script language="VBScript">
         Dim fso, shell, wmi, output, desktopPath
@@ -38,90 +42,335 @@
         Sub Log(msg)
             output = output & msg & vbCrLf
             document.getElementById("output").innerText = output
+            document.getElementById("output").scrollTop = document.getElementById("output").scrollHeight
+        End Sub
+
+        Sub ForceScan()
+            ' Delete existing files and run fresh scan
+            On Error Resume Next
+            If fso.FileExists(desktopPath & "\network_drives.csv") Then
+                fso.DeleteFile desktopPath & "\network_drives.csv", True
+            End If
+            If fso.FileExists(desktopPath & "\network_files.csv") Then
+                fso.DeleteFile desktopPath & "\network_files.csv", True
+            End If
+            If fso.FileExists(desktopPath & "\security_audit_report.txt") Then
+                fso.DeleteFile desktopPath & "\security_audit_report.txt", True
+            End If
+            On Error Goto 0
+            output = ""
+            Log "Previous results deleted. Starting fresh scan..."
+            Log ""
+            Main
         End Sub
 
         Sub Main()
-            Log "Kaboom"
-            Log "Scanning network shares..."
+            Log "Kaboom - Security Audit Tool"
+            Log "=============================="
             Log ""
+
+            ' Check existing files to skip completed sections
+            Dim skipDrives, skipFiles, skipReport
+            skipDrives = False
+            skipFiles = False
+            skipReport = False
+
+            If fso.FileExists(desktopPath & "\network_drives.csv") Then
+                Dim drvFile
+                Set drvFile = fso.GetFile(desktopPath & "\network_drives.csv")
+                If drvFile.Size > 50 Then skipDrives = True
+            End If
+
+            If fso.FileExists(desktopPath & "\network_files.csv") Then
+                Dim filFile
+                Set filFile = fso.GetFile(desktopPath & "\network_files.csv")
+                If filFile.Size > 100 Then skipFiles = True
+            End If
+
+            If fso.FileExists(desktopPath & "\security_audit_report.txt") Then
+                Dim rptFile
+                Set rptFile = fso.GetFile(desktopPath & "\security_audit_report.txt")
+                If rptFile.Size > 500 Then skipReport = True
+            End If
+
+            If skipDrives And skipFiles And skipReport Then
+                Log "*** All scans already completed! ***"
+                Log ""
+                Log "Existing files found on Desktop:"
+                Log "  - network_drives.csv"
+                Log "  - network_files.csv"
+                Log "  - security_audit_report.txt"
+                Log ""
+                Log "Delete these files to run a fresh scan."
+                Exit Sub
+            End If
+
+            Dim report
+            report = "============================================" & vbCrLf
+            report = report & "SECURITY AUDIT REPORT" & vbCrLf
+            report = report & "Generated: " & Now() & vbCrLf
+            report = report & "============================================" & vbCrLf
 
             ' ===== NETWORK DRIVES =====
             Dim drivesCsv, networkDrives
             drivesCsv = "Drive,Remote Path" & vbCrLf
             Set networkDrives = CreateObject("Scripting.Dictionary")
 
-            Set drives = fso.Drives
-            For Each drive In drives
-                If drive.DriveType = 3 Then ' Network drive
-                    drivesCsv = drivesCsv & drive.DriveLetter & ":," & drive.ShareName & vbCrLf
-                    networkDrives.Add networkDrives.Count, drive.DriveLetter & ":"
-                    Log "Found: " & drive.DriveLetter & ": -> " & drive.ShareName
-                End If
-            Next
+            If skipDrives Then
+                Log "[1/15] Network Drives - SKIPPED (already exists)"
+            Else
+                Log "[1/15] Scanning Network Drives..."
 
-            ' Add UNC paths
-            Dim uncPaths
-            uncPaths = Array("\\rbucfpsv\Public", "\\rbucfpsv\Public\General", "\\rbucfpsv\Public\General\IT OS Audit")
-            For Each unc In uncPaths
-                drivesCsv = drivesCsv & "UNC," & unc & vbCrLf
-                networkDrives.Add networkDrives.Count, unc
-                Log "Added UNC: " & unc
-            Next
+                Set drives = fso.Drives
+                For Each drive In drives
+                    If drive.DriveType = 3 Then
+                        drivesCsv = drivesCsv & drive.DriveLetter & ":," & drive.ShareName & vbCrLf
+                        networkDrives.Add networkDrives.Count, drive.DriveLetter & ":"
+                        Log "  Found: " & drive.DriveLetter & ": -> " & drive.ShareName
+                    End If
+                Next
 
-            ' Save drives
-            Dim drivesFile
-            Set drivesFile = fso.CreateTextFile(desktopPath & "\network_drives.csv", True, True)
-            drivesFile.Write drivesCsv
-            drivesFile.Close
-            Log "Drives saved: " & desktopPath & "\network_drives.csv"
+                Dim uncPaths
+                uncPaths = Array("\\rbucfpsv\Public", "\\rbucfpsv\Public\General", "\\rbucfpsv\Public\General\IT OS Audit")
+                For Each unc In uncPaths
+                    drivesCsv = drivesCsv & "UNC," & unc & vbCrLf
+                    networkDrives.Add networkDrives.Count, unc
+                Next
+
+                Dim drivesFile
+                Set drivesFile = fso.CreateTextFile(desktopPath & "\network_drives.csv", True, True)
+                drivesFile.Write drivesCsv
+                drivesFile.Close
+            End If
 
             ' ===== SCAN FILES =====
             Dim filesCsv, fileCount
             filesCsv = "Path,Name,Extension,Size (KB),Created,Modified,Type" & vbCrLf
             fileCount = 0
 
-            For Each key In networkDrives.Keys
-                If fileCount < 50000 Then
-                    Log "Scanning " & networkDrives(key) & "..."
-                    ScanFolder networkDrives(key), 0, filesCsv, fileCount
-                End If
-            Next
+            If skipFiles Then
+                Log "[2/15] Network Files - SKIPPED (already exists)"
+            Else
+                Log "[2/15] Scanning Network Files..."
+                For Each key In networkDrives.Keys
+                    If fileCount < 50000 Then
+                        ScanFolder networkDrives(key), 0, filesCsv, fileCount
+                    End If
+                Next
 
-            ' Save files
-            Dim filesFile
-            Set filesFile = fso.CreateTextFile(desktopPath & "\network_files.csv", True, True)
-            filesFile.Write filesCsv
-            filesFile.Close
+                Dim filesFile
+                Set filesFile = fso.CreateTextFile(desktopPath & "\network_files.csv", True, True)
+                filesFile.Write filesCsv
+                filesFile.Close
+                Log "  Files found: " & fileCount
+            End If
 
-            Log ""
-            Log "=== SUMMARY ==="
-            Log "Total files found: " & fileCount
-            Log "Files saved: " & desktopPath & "\network_files.csv"
+            ' ===== RECON REPORT =====
+            If skipReport Then
+                Log "[3-15] Security Report - SKIPPED (already exists)"
+                Log ""
+                Log "============================================"
+                Log "SCAN COMPLETE (using cached results)"
+                Log "============================================"
+                Exit Sub
+            End If
 
-            ' ===== RECON =====
-            Log ""
-            Log "=== RUNNING ADDITIONAL RECON ==="
-
-            Dim report
-            report = "============================================" & vbCrLf
-            report = report & "SYSTEM RECONNAISSANCE REPORT" & vbCrLf
-            report = report & "Generated: " & Now() & vbCrLf
-            report = report & "============================================" & vbCrLf
-
-            ' System Info
-            Log "[1/10] Collecting System Info..."
+            ' ===== SYSTEM INFO =====
+            Log "[3/15] Collecting System Info..."
             report = report & vbCrLf & "--- SYSTEM INFO ---" & vbCrLf
             report = report & "Hostname: " & shell.ExpandEnvironmentStrings("%COMPUTERNAME%") & vbCrLf
             report = report & "Username: " & shell.ExpandEnvironmentStrings("%USERNAME%") & vbCrLf
             report = report & "Domain: " & shell.ExpandEnvironmentStrings("%USERDOMAIN%") & vbCrLf
+            report = report & "Logon Server: " & shell.ExpandEnvironmentStrings("%LOGONSERVER%") & vbCrLf
             report = report & "Architecture: " & shell.ExpandEnvironmentStrings("%PROCESSOR_ARCHITECTURE%") & vbCrLf
-            report = report & "System Root: " & shell.ExpandEnvironmentStrings("%SYSTEMROOT%") & vbCrLf
-            report = report & "Temp Path: " & shell.ExpandEnvironmentStrings("%TEMP%") & vbCrLf
+
+            ' ===== ACTIVE DIRECTORY RECON =====
+            Log "[4/15] Active Directory - Domain Info..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "ACTIVE DIRECTORY RECONNAISSANCE" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            On Error Resume Next
+
+            ' Get Domain Info via ADSI
+            report = report & vbCrLf & "--- DOMAIN INFO ---" & vbCrLf
+            Dim objRootDSE, domainDN, domainName
+            Set objRootDSE = GetObject("LDAP://RootDSE")
+            If Err.Number = 0 Then
+                domainDN = objRootDSE.Get("defaultNamingContext")
+                report = report & "Domain DN: " & domainDN & vbCrLf
+                report = report & "Forest DN: " & objRootDSE.Get("rootDomainNamingContext") & vbCrLf
+                report = report & "Schema DN: " & objRootDSE.Get("schemaNamingContext") & vbCrLf
+                report = report & "Config DN: " & objRootDSE.Get("configurationNamingContext") & vbCrLf
+                report = report & "DC Functionality: " & objRootDSE.Get("domainControllerFunctionality") & vbCrLf
+                report = report & "Forest Functionality: " & objRootDSE.Get("forestFunctionality") & vbCrLf
+                report = report & "Domain Functionality: " & objRootDSE.Get("domainFunctionality") & vbCrLf
+                Log "  Domain: " & domainDN
+            Else
+                report = report & "Not joined to domain or LDAP not accessible" & vbCrLf
+                Log "  Not domain joined"
+                Err.Clear
+            End If
+
+            ' Domain Controllers
+            Log "[5/15] Active Directory - Domain Controllers..."
+            report = report & vbCrLf & "--- DOMAIN CONTROLLERS ---" & vbCrLf
+            If domainDN <> "" Then
+                Dim objDomain, objDC
+                Set objDomain = GetObject("LDAP://OU=Domain Controllers," & domainDN)
+                If Err.Number = 0 Then
+                    objDomain.Filter = Array("computer")
+                    For Each objDC In objDomain
+                        report = report & "DC: " & objDC.Name & " (" & objDC.dNSHostName & ")" & vbCrLf
+                        Log "  DC: " & objDC.Name
+                    Next
+                Else
+                    Err.Clear
+                    ' Alternative method using WMI
+                    Dim dcQuery
+                    Set dcQuery = wmi.ExecQuery("SELECT * FROM Win32_NTDomain")
+                    For Each dc In dcQuery
+                        report = report & "Domain: " & dc.DomainName & " DC: " & dc.DomainControllerName & vbCrLf
+                    Next
+                End If
+            End If
+
+            ' Domain Admins
+            Log "[6/15] Active Directory - Privileged Groups..."
+            report = report & vbCrLf & "--- PRIVILEGED GROUPS ---" & vbCrLf
+
+            Dim privilegedGroups
+            privilegedGroups = Array("Domain Admins", "Enterprise Admins", "Schema Admins", "Administrators", "Account Operators", "Backup Operators", "Server Operators", "Print Operators")
+
+            For Each grpName In privilegedGroups
+                report = report & vbCrLf & "[" & grpName & "]" & vbCrLf
+                Dim objGroup
+                Set objGroup = GetObject("WinNT://" & shell.ExpandEnvironmentStrings("%USERDOMAIN%") & "/" & grpName & ",group")
+                If Err.Number = 0 Then
+                    For Each member In objGroup.Members
+                        report = report & "  - " & member.Name & vbCrLf
+                    Next
+                Else
+                    report = report & "  (Unable to enumerate)" & vbCrLf
+                    Err.Clear
+                End If
+            Next
+
+            ' Domain Users Sample
+            Log "[7/15] Active Directory - Domain Users (sample)..."
+            report = report & vbCrLf & "--- DOMAIN USERS (sample) ---" & vbCrLf
+            If domainDN <> "" Then
+                Dim objConnection, objCommand, objRecordset
+                Set objConnection = CreateObject("ADODB.Connection")
+                objConnection.Provider = "ADsDSOObject"
+                objConnection.Open "Active Directory Provider"
+
+                Set objCommand = CreateObject("ADODB.Command")
+                Set objCommand.ActiveConnection = objConnection
+                objCommand.Properties("Page Size") = 100
+                objCommand.Properties("Searchscope") = 2 ' subtree
+
+                objCommand.CommandText = "SELECT sAMAccountName, displayName, mail, lastLogon, pwdLastSet, userAccountControl FROM 'LDAP://" & domainDN & "' WHERE objectCategory='person' AND objectClass='user'"
+
+                Set objRecordset = objCommand.Execute
+                If Err.Number = 0 Then
+                    Dim userCount
+                    userCount = 0
+                    Do Until objRecordset.EOF Or userCount >= 50
+                        Dim uac, status
+                        uac = objRecordset.Fields("userAccountControl").Value
+                        status = ""
+                        If (uac And 2) Then status = status & "[DISABLED] "
+                        If (uac And 65536) Then status = status & "[NEVER_EXPIRES] "
+                        If (uac And 32) Then status = status & "[NO_PWD_REQUIRED] "
+                        If (uac And 524288) Then status = status & "[TRUSTED_FOR_DELEGATION] "
+
+                        report = report & objRecordset.Fields("sAMAccountName").Value & " - " & objRecordset.Fields("displayName").Value & " " & status & vbCrLf
+                        userCount = userCount + 1
+                        objRecordset.MoveNext
+                    Loop
+                    Log "  Found " & userCount & " users (showing first 50)"
+                Else
+                    report = report & "LDAP query failed" & vbCrLf
+                    Err.Clear
+                End If
+                objConnection.Close
+            End If
+
+            ' Domain Computers
+            Log "[8/15] Active Directory - Domain Computers..."
+            report = report & vbCrLf & "--- DOMAIN COMPUTERS (sample) ---" & vbCrLf
+            If domainDN <> "" Then
+                Set objConnection = CreateObject("ADODB.Connection")
+                objConnection.Provider = "ADsDSOObject"
+                objConnection.Open "Active Directory Provider"
+
+                Set objCommand = CreateObject("ADODB.Command")
+                Set objCommand.ActiveConnection = objConnection
+                objCommand.Properties("Page Size") = 100
+                objCommand.Properties("Searchscope") = 2
+
+                objCommand.CommandText = "SELECT cn, operatingSystem, operatingSystemVersion, dNSHostName FROM 'LDAP://" & domainDN & "' WHERE objectCategory='computer'"
+
+                Set objRecordset = objCommand.Execute
+                If Err.Number = 0 Then
+                    Dim compCount
+                    compCount = 0
+                    Do Until objRecordset.EOF Or compCount >= 30
+                        report = report & objRecordset.Fields("cn").Value & " - " & objRecordset.Fields("operatingSystem").Value & " " & objRecordset.Fields("operatingSystemVersion").Value & vbCrLf
+                        compCount = compCount + 1
+                        objRecordset.MoveNext
+                    Loop
+                    Log "  Found " & compCount & " computers (showing first 30)"
+                Else
+                    Err.Clear
+                End If
+                objConnection.Close
+            End If
+
+            ' Password Policy
+            Log "[9/15] Active Directory - Password Policy..."
+            report = report & vbCrLf & "--- PASSWORD POLICY ---" & vbCrLf
+            If domainDN <> "" Then
+                Dim objDomainPolicy
+                Set objDomainPolicy = GetObject("LDAP://" & domainDN)
+                If Err.Number = 0 Then
+                    Dim maxPwdAge, minPwdAge, minPwdLength, pwdHistoryLength, lockoutThreshold
+                    maxPwdAge = objDomainPolicy.Get("maxPwdAge")
+                    minPwdAge = objDomainPolicy.Get("minPwdAge")
+                    minPwdLength = objDomainPolicy.Get("minPwdLength")
+                    pwdHistoryLength = objDomainPolicy.Get("pwdHistoryLength")
+                    lockoutThreshold = objDomainPolicy.Get("lockoutThreshold")
+
+                    report = report & "Max Password Age: " & Abs(CCur((maxPwdAge.HighPart * 2^32) + maxPwdAge.LowPart) / 864000000000) & " days" & vbCrLf
+                    report = report & "Min Password Age: " & Abs(CCur((minPwdAge.HighPart * 2^32) + minPwdAge.LowPart) / 864000000000) & " days" & vbCrLf
+                    report = report & "Min Password Length: " & minPwdLength & " chars" & vbCrLf
+                    report = report & "Password History: " & pwdHistoryLength & " passwords" & vbCrLf
+                    report = report & "Lockout Threshold: " & lockoutThreshold & " attempts" & vbCrLf
+                Else
+                    report = report & "Unable to query password policy" & vbCrLf
+                    Err.Clear
+                End If
+            End If
+
+            ' Trust Relationships
+            Log "[10/15] Active Directory - Trust Relationships..."
+            report = report & vbCrLf & "--- TRUST RELATIONSHIPS ---" & vbCrLf
+            Dim objTrusts
+            Set objTrusts = wmi.ExecQuery("SELECT * FROM Win32_NTDomain WHERE DomainName IS NOT NULL")
+            For Each trust In objTrusts
+                report = report & "Domain: " & trust.DomainName & vbCrLf
+                report = report & "  DC: " & trust.DomainControllerName & vbCrLf
+                report = report & "  DNS Forest: " & trust.DnsForestName & vbCrLf
+            Next
 
             ' Network Info
-            Log "[2/10] Collecting Network Info..."
-            report = report & vbCrLf & "--- NETWORK INFO ---" & vbCrLf
-            On Error Resume Next
+            Log "[11/15] Collecting Network Info..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "NETWORK INFORMATION" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            report = report & vbCrLf & "--- NETWORK ADAPTERS ---" & vbCrLf
             Set adapters = wmi.ExecQuery("SELECT * FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled=True")
             For Each adapter In adapters
                 report = report & "Adapter: " & adapter.Description & vbCrLf
@@ -136,23 +385,30 @@
                         report = report & "  Gateway: " & gw & vbCrLf
                     Next
                 End If
+                If Not IsNull(adapter.DNSServerSearchOrder) Then
+                    For Each dns In adapter.DNSServerSearchOrder
+                        report = report & "  DNS: " & dns & vbCrLf
+                    Next
+                End If
             Next
-            On Error Goto 0
 
-            ' Local Users
-            Log "[3/10] Collecting Users..."
+            ' Local Users and Groups
+            Log "[12/15] Collecting Local Users & Groups..."
             report = report & vbCrLf & "--- LOCAL USERS ---" & vbCrLf
-            On Error Resume Next
             Set users = wmi.ExecQuery("SELECT * FROM Win32_UserAccount WHERE LocalAccount=True")
             For Each usr In users
-                report = report & usr.Name & " - Disabled:" & usr.Disabled & vbCrLf
+                report = report & usr.Name & " - Disabled:" & usr.Disabled & " SID:" & usr.SID & vbCrLf
             Next
-            On Error Goto 0
+
+            report = report & vbCrLf & "--- LOCAL GROUPS ---" & vbCrLf
+            Set groups = wmi.ExecQuery("SELECT * FROM Win32_Group WHERE LocalAccount=True")
+            For Each grp In groups
+                report = report & grp.Name & " - " & grp.Description & vbCrLf
+            Next
 
             ' Processes
-            Log "[4/10] Collecting Processes..."
+            Log "[13/15] Collecting Running Processes..."
             report = report & vbCrLf & "--- RUNNING PROCESSES ---" & vbCrLf
-            On Error Resume Next
             Set procs = wmi.ExecQuery("SELECT Name, ProcessId, ExecutablePath FROM Win32_Process")
             Dim procCount
             procCount = 0
@@ -162,85 +418,48 @@
                     procCount = procCount + 1
                 End If
             Next
-            On Error Goto 0
 
             ' Services
-            Log "[5/10] Collecting Services..."
+            Log "[14/15] Collecting Services..."
             report = report & vbCrLf & "--- RUNNING SERVICES ---" & vbCrLf
-            On Error Resume Next
-            Set services = wmi.ExecQuery("SELECT Name, DisplayName FROM Win32_Service WHERE State='Running'")
+            Set services = wmi.ExecQuery("SELECT Name, DisplayName, StartName FROM Win32_Service WHERE State='Running'")
             For Each svc In services
-                report = report & svc.Name & ": " & svc.DisplayName & vbCrLf
+                report = report & svc.Name & ": " & svc.DisplayName & " [" & svc.StartName & "]" & vbCrLf
             Next
-            On Error Goto 0
 
-            ' Installed Software
-            Log "[6/10] Collecting Installed Software..."
-            report = report & vbCrLf & "--- INSTALLED SOFTWARE ---" & vbCrLf
-            On Error Resume Next
-            Set software = wmi.ExecQuery("SELECT Name, Version FROM Win32_Product")
-            Dim swCount
-            swCount = 0
-            For Each sw In software
-                If swCount < 30 Then
-                    report = report & sw.Name & " v" & sw.Version & vbCrLf
-                    swCount = swCount + 1
-                End If
-            Next
-            On Error Goto 0
-
-            ' Shares
-            Log "[7/10] Collecting Local Shares..."
+            ' Shares and Security
+            Log "[15/15] Collecting Shares & Security Status..."
             report = report & vbCrLf & "--- LOCAL SHARES ---" & vbCrLf
-            On Error Resume Next
             Set shares = wmi.ExecQuery("SELECT Name, Path, Description FROM Win32_Share")
             For Each sh In shares
                 report = report & sh.Name & " -> " & sh.Path & " (" & sh.Description & ")" & vbCrLf
             Next
-            On Error Goto 0
 
-            ' Environment Variables
-            Log "[8/10] Collecting Environment Variables..."
-            report = report & vbCrLf & "--- INTERESTING ENV VARS ---" & vbCrLf
-            report = report & "PATH: " & shell.ExpandEnvironmentStrings("%PATH%") & vbCrLf
-            report = report & "LOGONSERVER: " & shell.ExpandEnvironmentStrings("%LOGONSERVER%") & vbCrLf
-            report = report & "APPDATA: " & shell.ExpandEnvironmentStrings("%APPDATA%") & vbCrLf
-
-            ' OS Info via WMI
-            Log "[9/10] Collecting OS Info..."
-            report = report & vbCrLf & "--- OS INFO ---" & vbCrLf
-            On Error Resume Next
-            Set osInfo = wmi.ExecQuery("SELECT Caption, Version, BuildNumber, OSArchitecture FROM Win32_OperatingSystem")
-            For Each os In osInfo
-                report = report & "OS: " & os.Caption & vbCrLf
-                report = report & "Version: " & os.Version & vbCrLf
-                report = report & "Build: " & os.BuildNumber & vbCrLf
-                report = report & "Architecture: " & os.OSArchitecture & vbCrLf
-            Next
-            On Error Goto 0
-
-            ' Antivirus
-            Log "[10/10] Collecting Security Status..."
             report = report & vbCrLf & "--- SECURITY STATUS ---" & vbCrLf
-            On Error Resume Next
             Set wmiSec = GetObject("winmgmts:\\.\root\SecurityCenter2")
             Set avProducts = wmiSec.ExecQuery("SELECT displayName FROM AntiVirusProduct")
             For Each av In avProducts
                 report = report & "Antivirus: " & av.displayName & vbCrLf
             Next
+
             On Error Goto 0
 
             ' Save report
             Dim reportFile
-            Set reportFile = fso.CreateTextFile(desktopPath & "\recon_report.txt", True, True)
+            Set reportFile = fso.CreateTextFile(desktopPath & "\security_audit_report.txt", True, True)
             reportFile.Write report
             reportFile.Close
 
             Log ""
             Log "============================================"
-            Log "RECON COMPLETE!"
-            Log "Report saved: " & desktopPath & "\recon_report.txt"
+            Log "SECURITY AUDIT COMPLETE!"
             Log "============================================"
+            Log "Reports saved to Desktop:"
+            Log "  - network_drives.csv"
+            Log "  - network_files.csv"
+            Log "  - security_audit_report.txt"
+            Log ""
+            Log "Review the security_audit_report.txt for findings."
         End Sub
 
         Sub ScanFolder(folderPath, depth, ByRef csv, ByRef count)
@@ -252,14 +471,12 @@
             If fso.FolderExists(folderPath) Then
                 Set folder = fso.GetFolder(folderPath)
 
-                ' Files
                 For Each file In folder.Files
                     If count >= 50000 Then Exit Sub
                     csv = csv & """" & folder.Path & """,""" & file.Name & """," & fso.GetExtensionName(file.Name) & "," & Int(file.Size/1024) & "," & file.DateCreated & "," & file.DateLastModified & ",File" & vbCrLf
                     count = count + 1
                 Next
 
-                ' Subfolders
                 For Each subFolder In folder.SubFolders
                     If count >= 50000 Then Exit Sub
                     csv = csv & """" & folder.Path & """,""" & subFolder.Name & """,,," & subFolder.DateCreated & "," & subFolder.DateLastModified & ",Folder" & vbCrLf
@@ -270,9 +487,21 @@
             On Error Goto 0
         End Sub
 
-        ' Auto-run on load
         Sub Window_OnLoad
-            Main
+            ' Check if previous results exist and inform user
+            Dim hasResults
+            hasResults = False
+            If fso.FileExists(desktopPath & "\security_audit_report.txt") Then hasResults = True
+            If fso.FileExists(desktopPath & "\network_files.csv") Then hasResults = True
+
+            If hasResults Then
+                Log "*** Previous scan results found ***"
+                Log ""
+                Log "Click 'Run Scan' to use cached results"
+                Log "Click 'Force Fresh Scan' to delete and rescan"
+            Else
+                Log "Ready to scan. Click 'Run Scan' to begin."
+            End If
         End Sub
     </script>
 </body>
