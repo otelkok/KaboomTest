@@ -39,6 +39,42 @@
         desktopPath = shell.SpecialFolders("Desktop")
         output = ""
 
+        ' ===== FINDINGS TRACKING SYSTEM =====
+        Dim findings, findingsCount
+        findings = ""
+        findingsCount = 0
+
+        Sub AddFinding(severity, category, title, description, recommendation)
+            ' Severity: 1-10 (10=Critical, 7-9=High, 4-6=Medium, 1-3=Low)
+            Dim severityLabel, severityColor
+            Select Case True
+                Case severity >= 9
+                    severityLabel = "CRITICAL"
+                Case severity >= 7
+                    severityLabel = "HIGH"
+                Case severity >= 4
+                    severityLabel = "MEDIUM"
+                Case Else
+                    severityLabel = "LOW"
+            End Select
+
+            findingsCount = findingsCount + 1
+            findings = findings & "============================================================" & vbCrLf
+            findings = findings & "FINDING #" & findingsCount & " | Severity: " & severity & "/10 (" & severityLabel & ")" & vbCrLf
+            findings = findings & "============================================================" & vbCrLf
+            findings = findings & "Category: " & category & vbCrLf
+            findings = findings & "Title: " & title & vbCrLf
+            findings = findings & vbCrLf
+            findings = findings & "Description:" & vbCrLf
+            findings = findings & description & vbCrLf
+            findings = findings & vbCrLf
+            findings = findings & "Recommendation:" & vbCrLf
+            findings = findings & recommendation & vbCrLf
+            findings = findings & vbCrLf
+
+            Log "  [FINDING] " & severityLabel & " (" & severity & "/10): " & title
+        End Sub
+
         Sub Log(msg)
             output = output & msg & vbCrLf
             document.getElementById("output").innerText = output
@@ -63,8 +99,13 @@
             If fso.FileExists(desktopPath & "\security_audit_report.txt") Then
                 fso.DeleteFile desktopPath & "\security_audit_report.txt", True
             End If
+            If fso.FileExists(desktopPath & "\security_findings.txt") Then
+                fso.DeleteFile desktopPath & "\security_findings.txt", True
+            End If
             On Error Goto 0
             output = ""
+            findings = ""
+            findingsCount = 0
             Log "Previous results deleted. Starting fresh scan..."
             Log ""
             Main
@@ -125,9 +166,9 @@
             Set networkDrives = CreateObject("Scripting.Dictionary")
 
             If skipDrives Then
-                Log "[1/15] Network Drives - SKIPPED (already exists)"
+                Log "[1/26] Network Drives - SKIPPED (already exists)"
             Else
-                Log "[1/15] Scanning Network Drives..."
+                Log "[1/26] Scanning Network Drives..."
 
                 Set drives = fso.Drives
                 For Each drive In drives
@@ -157,9 +198,9 @@
             fileCount = 0
 
             If skipFiles Then
-                Log "[2/15] Network Files - SKIPPED (already exists)"
+                Log "[2/26] Network Files - SKIPPED (already exists)"
             Else
-                Log "[2/15] Scanning Network Files..."
+                Log "[2/26] Scanning Network Files..."
                 For Each key In networkDrives.Keys
                     If fileCount < 50000 Then
                         ScanFolder networkDrives(key), 0, filesCsv, fileCount
@@ -175,7 +216,7 @@
 
             ' ===== RECON REPORT =====
             If skipReport Then
-                Log "[3-15] Security Report - SKIPPED (already exists)"
+                Log "[3-26] Security Report - SKIPPED (already exists)"
                 Log ""
                 Log "============================================"
                 Log "SCAN COMPLETE (using cached results)"
@@ -184,7 +225,7 @@
             End If
 
             ' ===== SYSTEM INFO =====
-            Log "[3/15] Collecting System Info..."
+            Log "[3/26] Collecting System Info..."
             report = report & vbCrLf & "--- SYSTEM INFO ---" & vbCrLf
             report = report & "Hostname: " & shell.ExpandEnvironmentStrings("%COMPUTERNAME%") & vbCrLf
             report = report & "Username: " & shell.ExpandEnvironmentStrings("%USERNAME%") & vbCrLf
@@ -193,7 +234,7 @@
             report = report & "Architecture: " & shell.ExpandEnvironmentStrings("%PROCESSOR_ARCHITECTURE%") & vbCrLf
 
             ' ===== ACTIVE DIRECTORY RECON =====
-            Log "[4/15] Active Directory - Domain Info..."
+            Log "[4/26] Active Directory - Domain Info..."
             report = report & vbCrLf & "========================================" & vbCrLf
             report = report & "ACTIVE DIRECTORY RECONNAISSANCE" & vbCrLf
             report = report & "========================================" & vbCrLf
@@ -221,7 +262,7 @@
             End If
 
             ' Domain Controllers
-            Log "[5/15] Active Directory - Domain Controllers..."
+            Log "[5/26] Active Directory - Domain Controllers..."
             report = report & vbCrLf & "--- DOMAIN CONTROLLERS ---" & vbCrLf
             If domainDN <> "" Then
                 Dim objDomain, objDC
@@ -244,7 +285,7 @@
             End If
 
             ' Domain Admins
-            Log "[6/15] Active Directory - Privileged Groups..."
+            Log "[6/26] Active Directory - Privileged Groups..."
             report = report & vbCrLf & "--- PRIVILEGED GROUPS ---" & vbCrLf
 
             Dim privilegedGroups
@@ -265,7 +306,7 @@
             Next
 
             ' Domain Users - ALL (with CSV export)
-            Log "[7/15] Active Directory - Domain Users (ALL)..."
+            Log "[7/26] Active Directory - Domain Users (ALL)..."
             report = report & vbCrLf & "--- DOMAIN USERS (ALL) ---" & vbCrLf
             Dim usersCsv
             usersCsv = "sAMAccountName,DisplayName,Mail,Disabled,NeverExpires,NoPwdRequired,TrustedForDelegation" & vbCrLf
@@ -332,7 +373,7 @@
             End If
 
             ' Domain Computers - ALL (with CSV export)
-            Log "[8/15] Active Directory - Domain Computers (ALL)..."
+            Log "[8/26] Active Directory - Domain Computers (ALL)..."
             report = report & vbCrLf & "--- DOMAIN COMPUTERS (ALL) ---" & vbCrLf
             Dim computersCsv
             computersCsv = "ComputerName,OperatingSystem,OSVersion,DNSHostName" & vbCrLf
@@ -373,7 +414,7 @@
             End If
 
             ' Password Policy
-            Log "[9/15] Active Directory - Password Policy..."
+            Log "[9/26] Active Directory - Password Policy..."
             report = report & vbCrLf & "--- PASSWORD POLICY ---" & vbCrLf
             If domainDN <> "" Then
                 Dim objDomainPolicy
@@ -397,8 +438,905 @@
                 End If
             End If
 
+            ' ===== LATERAL MOVEMENT POTENTIAL =====
+            Log "[10/26] Lateral Movement Potential..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "LATERAL MOVEMENT POTENTIAL" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' Check Admin Shares on Local Machine
+            report = report & vbCrLf & "--- LOCAL ADMIN SHARES ---" & vbCrLf
+            Dim adminShares
+            adminShares = Array("C$", "ADMIN$", "IPC$")
+            For Each shareName In adminShares
+                Dim sharePath
+                sharePath = "\\" & shell.ExpandEnvironmentStrings("%COMPUTERNAME%") & "\" & shareName
+                If fso.FolderExists(sharePath) Then
+                    report = report & "[ACCESSIBLE] " & sharePath & vbCrLf
+                Else
+                    report = report & "[NOT ACCESSIBLE] " & sharePath & vbCrLf
+                End If
+            Next
+
+            ' Check WinRM Service Status
+            report = report & vbCrLf & "--- WINRM STATUS ---" & vbCrLf
+            Dim winrmService
+            Set winrmService = wmi.ExecQuery("SELECT Name, State, StartMode FROM Win32_Service WHERE Name='WinRM'")
+            For Each ws In winrmService
+                report = report & "WinRM Service: " & ws.State & " (StartMode: " & ws.StartMode & ")" & vbCrLf
+                If ws.State = "Running" Then
+                    report = report & "[WARNING] WinRM is running - PSRemoting possible" & vbCrLf
+                End If
+            Next
+
+            ' Check SMB Signing Configuration
+            report = report & vbCrLf & "--- SMB SIGNING CONFIG ---" & vbCrLf
+            Dim smbClientSigning, smbServerSigning
+            On Error Resume Next
+            smbClientSigning = shell.RegRead("HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters\RequireSecuritySignature")
+            If Err.Number = 0 Then
+                If smbClientSigning = 0 Then
+                    report = report & "[RISK] SMB Client Signing: NOT Required" & vbCrLf
+                    AddFinding 7, "Lateral Movement", "SMB Client Signing Not Required", _
+                        "SMB client signing is not enforced. This allows NTLM relay attacks where an attacker can intercept and relay authentication requests to gain unauthorized access to other systems.", _
+                        "Enable SMB signing via Group Policy: Computer Configuration > Policies > Windows Settings > Security Settings > Local Policies > Security Options > 'Microsoft network client: Digitally sign communications (always)' = Enabled"
+                Else
+                    report = report & "[OK] SMB Client Signing: Required" & vbCrLf
+                End If
+            Else
+                report = report & "SMB Client Signing: Not configured (default)" & vbCrLf
+                Err.Clear
+            End If
+
+            smbServerSigning = shell.RegRead("HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters\RequireSecuritySignature")
+            If Err.Number = 0 Then
+                If smbServerSigning = 0 Then
+                    report = report & "[RISK] SMB Server Signing: NOT Required" & vbCrLf
+                    AddFinding 7, "Lateral Movement", "SMB Server Signing Not Required", _
+                        "SMB server signing is not enforced. Combined with client signing issues, this creates a high-risk environment for NTLM relay attacks and man-in-the-middle attacks on the network.", _
+                        "Enable SMB signing via Group Policy: Computer Configuration > Policies > Windows Settings > Security Settings > Local Policies > Security Options > 'Microsoft network server: Digitally sign communications (always)' = Enabled"
+                Else
+                    report = report & "[OK] SMB Server Signing: Required" & vbCrLf
+                End If
+            Else
+                report = report & "SMB Server Signing: Not configured (default)" & vbCrLf
+                Err.Clear
+            End If
+
+            ' Check LAPS (Local Admin Password Solution)
+            report = report & vbCrLf & "--- LAPS STATUS ---" & vbCrLf
+            Dim lapsInstalled
+            lapsInstalled = False
+            Dim lapsPath
+            lapsPath = shell.RegRead("HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{97E2CA7B-B657-4FF7-A6DB-30ECC73E1E28}\DisplayName")
+            If Err.Number = 0 Then
+                report = report & "[FOUND] LAPS Installed: " & lapsPath & vbCrLf
+                lapsInstalled = True
+            Else
+                Err.Clear
+            End If
+            lapsPath = shell.RegRead("HKLM\SOFTWARE\Policies\Microsoft Services\AdmPwd\AdmPwdEnabled")
+            If Err.Number = 0 Then
+                If lapsPath = 1 Then
+                    report = report & "[OK] LAPS Policy: Enabled" & vbCrLf
+                Else
+                    report = report & "[RISK] LAPS Policy: Disabled" & vbCrLf
+                End If
+            Else
+                If Not lapsInstalled Then
+                    report = report & "[RISK] LAPS: Not installed or not configured" & vbCrLf
+                    AddFinding 8, "Credential Management", "LAPS Not Deployed", _
+                        "Local Administrator Password Solution (LAPS) is not installed or configured. This means local administrator passwords may be identical across multiple machines, enabling lateral movement if one password is compromised.", _
+                        "Deploy Microsoft LAPS or Windows LAPS to automatically manage and rotate local administrator passwords. Configure via Group Policy and ensure passwords are stored securely in Active Directory."
+                End If
+                Err.Clear
+            End If
+
+            ' Check for Cached Credentials
+            report = report & vbCrLf & "--- CACHED CREDENTIALS ---" & vbCrLf
+            Dim cachedLogons
+            cachedLogons = shell.RegRead("HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\CachedLogonsCount")
+            If Err.Number = 0 Then
+                report = report & "Cached Logons Count: " & cachedLogons & vbCrLf
+                If CInt(cachedLogons) > 0 Then
+                    report = report & "[INFO] System caches " & cachedLogons & " domain credentials" & vbCrLf
+                End If
+            Else
+                Err.Clear
+            End If
+
+            ' Check RDP Status
+            report = report & vbCrLf & "--- RDP STATUS ---" & vbCrLf
+            Dim rdpEnabled
+            rdpEnabled = shell.RegRead("HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\fDenyTSConnections")
+            If Err.Number = 0 Then
+                If rdpEnabled = 0 Then
+                    report = report & "[INFO] RDP: Enabled" & vbCrLf
+                Else
+                    report = report & "RDP: Disabled" & vbCrLf
+                End If
+            Else
+                Err.Clear
+            End If
+
+            Dim rdpNLA
+            rdpNLA = shell.RegRead("HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\UserAuthentication")
+            If Err.Number = 0 Then
+                If rdpNLA = 1 Then
+                    report = report & "[OK] RDP NLA: Required" & vbCrLf
+                Else
+                    report = report & "[RISK] RDP NLA: Not Required" & vbCrLf
+                    AddFinding 6, "Remote Access", "RDP Network Level Authentication Disabled", _
+                        "Remote Desktop Protocol (RDP) does not require Network Level Authentication (NLA). This exposes the RDP service to pre-authentication attacks and increases the attack surface for brute-force and credential-based attacks.", _
+                        "Enable NLA for RDP via Group Policy: Computer Configuration > Administrative Templates > Windows Components > Remote Desktop Services > Remote Desktop Session Host > Security > 'Require user authentication for remote connections by using Network Level Authentication' = Enabled"
+                End If
+            Else
+                Err.Clear
+            End If
+
+            ' Check Kerberos Delegation Summary
+            report = report & vbCrLf & "--- KERBEROS DELEGATION SUMMARY ---" & vbCrLf
+            report = report & "(Users with TRUSTED_FOR_DELEGATION flag were marked in Domain Users section above)" & vbCrLf
+
+            ' Test Admin Share Access on Sample Computers
+            report = report & vbCrLf & "--- ADMIN SHARE ACCESS TEST (Sample) ---" & vbCrLf
+            If domainDN <> "" Then
+                Set objConnection = CreateObject("ADODB.Connection")
+                objConnection.Provider = "ADsDSOObject"
+                objConnection.Open "Active Directory Provider"
+
+                Set objCommand = CreateObject("ADODB.Command")
+                Set objCommand.ActiveConnection = objConnection
+                objCommand.Properties("Page Size") = 100
+                objCommand.Properties("Searchscope") = 2
+
+                ' Get first 20 computers to test
+                objCommand.CommandText = "SELECT cn, dNSHostName FROM 'LDAP://" & domainDN & "' WHERE objectCategory='computer'"
+
+                Set objRecordset = objCommand.Execute
+                If Err.Number = 0 Then
+                    Dim testCount
+                    testCount = 0
+                    Do Until objRecordset.EOF Or testCount >= 20
+                        Dim testHost, testShare
+                        testHost = objRecordset.Fields("dNSHostName").Value
+                        If Not IsNull(testHost) And testHost <> "" Then
+                            testShare = "\\" & testHost & "\C$"
+                            If fso.FolderExists(testShare) Then
+                                report = report & "[ACCESSIBLE] " & testShare & vbCrLf
+                                Log "  [!] Admin share accessible: " & testHost
+                            Else
+                                report = report & "[DENIED] " & testShare & vbCrLf
+                            End If
+                            testCount = testCount + 1
+                        End If
+                        objRecordset.MoveNext
+                    Loop
+                    Log "  Tested " & testCount & " computers for admin share access"
+                Else
+                    Err.Clear
+                End If
+                objConnection.Close
+            Else
+                report = report & "Domain not available for testing" & vbCrLf
+            End If
+
+            ' Check for GPP Passwords (SYSVOL)
+            report = report & vbCrLf & "--- GPP PASSWORD CHECK ---" & vbCrLf
+            If domainDN <> "" Then
+                Dim sysvolPath, gppFiles
+                sysvolPath = "\\" & shell.ExpandEnvironmentStrings("%USERDNSDOMAIN%") & "\SYSVOL"
+                If fso.FolderExists(sysvolPath) Then
+                    report = report & "[INFO] SYSVOL accessible: " & sysvolPath & vbCrLf
+                    report = report & "Check for Groups.xml, Services.xml, ScheduledTasks.xml, DataSources.xml" & vbCrLf
+                    report = report & "These files may contain cpassword attributes (GPP passwords)" & vbCrLf
+                Else
+                    report = report & "SYSVOL not accessible" & vbCrLf
+                End If
+            End If
+
+            ' ===== MODULE 2: CREDENTIAL HARVESTING POTENTIAL =====
+            Log "[11/26] Credential Harvesting Potential..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "CREDENTIAL HARVESTING POTENTIAL" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' Browser Credential Stores
+            report = report & vbCrLf & "--- BROWSER CREDENTIAL STORES ---" & vbCrLf
+            Dim browserPaths, browserName, bPath
+            Dim userProfile
+            userProfile = shell.ExpandEnvironmentStrings("%USERPROFILE%")
+
+            ' Chrome
+            bPath = userProfile & "\AppData\Local\Google\Chrome\User Data\Default\Login Data"
+            If fso.FileExists(bPath) Then
+                report = report & "[FOUND] Chrome Login Data: " & bPath & vbCrLf
+                Log "  [!] Chrome credentials found"
+            End If
+            bPath = userProfile & "\AppData\Local\Google\Chrome\User Data\Default\Cookies"
+            If fso.FileExists(bPath) Then
+                report = report & "[FOUND] Chrome Cookies: " & bPath & vbCrLf
+            End If
+
+            ' Firefox
+            Dim ffPath
+            ffPath = userProfile & "\AppData\Roaming\Mozilla\Firefox\Profiles"
+            If fso.FolderExists(ffPath) Then
+                report = report & "[FOUND] Firefox Profile Directory: " & ffPath & vbCrLf
+                report = report & "  Check for logins.json, key4.db, cookies.sqlite" & vbCrLf
+                Log "  [!] Firefox profile found"
+            End If
+
+            ' Edge
+            bPath = userProfile & "\AppData\Local\Microsoft\Edge\User Data\Default\Login Data"
+            If fso.FileExists(bPath) Then
+                report = report & "[FOUND] Edge Login Data: " & bPath & vbCrLf
+                Log "  [!] Edge credentials found"
+            End If
+
+            ' Windows Credential Manager
+            report = report & vbCrLf & "--- WINDOWS CREDENTIAL MANAGER ---" & vbCrLf
+            Dim credPath
+            credPath = userProfile & "\AppData\Local\Microsoft\Credentials"
+            If fso.FolderExists(credPath) Then
+                Dim credFolder, credFile, credCount
+                Set credFolder = fso.GetFolder(credPath)
+                credCount = credFolder.Files.Count
+                report = report & "[FOUND] Credential files: " & credCount & " files in " & credPath & vbCrLf
+                If credCount > 0 Then
+                    report = report & "[RISK] Credentials can be extracted with tools like Mimikatz" & vbCrLf
+                End If
+            End If
+
+            ' WiFi Profiles
+            report = report & vbCrLf & "--- WIFI PROFILES ---" & vbCrLf
+            Dim wifiPath
+            wifiPath = "C:\ProgramData\Microsoft\Wlansvc\Profiles\Interfaces"
+            If fso.FolderExists(wifiPath) Then
+                report = report & "[FOUND] WiFi profiles exist: " & wifiPath & vbCrLf
+                report = report & "[INFO] Passwords can be extracted with: netsh wlan show profiles" & vbCrLf
+            End If
+
+            ' Password files search
+            report = report & vbCrLf & "--- PASSWORD FILE INDICATORS ---" & vbCrLf
+            Dim searchPaths, pwdKeywords, sp
+            searchPaths = Array(userProfile & "\Desktop", userProfile & "\Documents", userProfile & "\Downloads")
+            pwdKeywords = Array("password", "sifre", "parola", "credential", "secret")
+
+            For Each sp In searchPaths
+                If fso.FolderExists(sp) Then
+                    Dim spFolder, spFile
+                    Set spFolder = fso.GetFolder(sp)
+                    For Each spFile In spFolder.Files
+                        Dim fNameLower
+                        fNameLower = LCase(spFile.Name)
+                        For Each kw In pwdKeywords
+                            If InStr(fNameLower, kw) > 0 Then
+                                report = report & "[FOUND] Potential password file: " & spFile.Path & vbCrLf
+                                Log "  [!] Password file: " & spFile.Name
+                            End If
+                        Next
+                    Next
+                End If
+            Next
+
+            ' ===== MODULE 3: PRIVILEGE ESCALATION VECTORS =====
+            Log "[12/26] Privilege Escalation Vectors..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "PRIVILEGE ESCALATION VECTORS" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' Unquoted Service Paths
+            report = report & vbCrLf & "--- UNQUOTED SERVICE PATHS ---" & vbCrLf
+            Dim svcQuery, svc, svcPath, unquotedCount
+            unquotedCount = 0
+            Set svcQuery = wmi.ExecQuery("SELECT Name, PathName, StartMode FROM Win32_Service WHERE PathName IS NOT NULL")
+            For Each svc In svcQuery
+                svcPath = svc.PathName
+                If InStr(svcPath, " ") > 0 And Left(svcPath, 1) <> """" Then
+                    If InStr(LCase(svcPath), "c:\windows") = 0 Then
+                        report = report & "[RISK] " & svc.Name & ": " & svcPath & vbCrLf
+                        unquotedCount = unquotedCount + 1
+                        If unquotedCount <= 5 Then
+                            Log "  [!] Unquoted: " & svc.Name
+                        End If
+                    End If
+                End If
+            Next
+            If unquotedCount = 0 Then
+                report = report & "[OK] No vulnerable unquoted service paths found" & vbCrLf
+            Else
+                report = report & "[TOTAL] " & unquotedCount & " unquoted service paths found" & vbCrLf
+            End If
+
+            ' AlwaysInstallElevated
+            report = report & vbCrLf & "--- ALWAYSINSTALLELEVATED ---" & vbCrLf
+            Dim aieHKLM, aieHKCU
+            aieHKLM = shell.RegRead("HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer\AlwaysInstallElevated")
+            If Err.Number = 0 And aieHKLM = 1 Then
+                report = report & "[CRITICAL] HKLM AlwaysInstallElevated: ENABLED" & vbCrLf
+                Log "  [!!] AlwaysInstallElevated ENABLED!"
+                AddFinding 10, "Privilege Escalation", "AlwaysInstallElevated Enabled (HKLM)", _
+                    "CRITICAL: AlwaysInstallElevated is enabled in HKLM. Any user can create a malicious MSI package that will execute with SYSTEM privileges. This is a trivial privilege escalation vector.", _
+                    "IMMEDIATELY disable AlwaysInstallElevated: Set HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer\AlwaysInstallElevated to 0 or remove the key. Review who enabled this setting and audit for potential compromise."
+            Else
+                report = report & "[OK] HKLM AlwaysInstallElevated: Not set" & vbCrLf
+                Err.Clear
+            End If
+            aieHKCU = shell.RegRead("HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer\AlwaysInstallElevated")
+            If Err.Number = 0 And aieHKCU = 1 Then
+                report = report & "[CRITICAL] HKCU AlwaysInstallElevated: ENABLED" & vbCrLf
+                AddFinding 10, "Privilege Escalation", "AlwaysInstallElevated Enabled (HKCU)", _
+                    "CRITICAL: AlwaysInstallElevated is enabled in HKCU. Combined with HKLM setting, this allows immediate privilege escalation to SYSTEM via malicious MSI installation.", _
+                    "IMMEDIATELY disable: Set HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer\AlwaysInstallElevated to 0. Investigate potential abuse."
+            Else
+                report = report & "[OK] HKCU AlwaysInstallElevated: Not set" & vbCrLf
+                Err.Clear
+            End If
+
+            ' Scheduled Tasks with writable paths
+            report = report & vbCrLf & "--- SCHEDULED TASKS (Sample) ---" & vbCrLf
+            Dim taskFolder, taskFiles
+            taskFolder = "C:\Windows\System32\Tasks"
+            If fso.FolderExists(taskFolder) Then
+                Set taskFiles = fso.GetFolder(taskFolder)
+                report = report & "[INFO] Task folder accessible: " & taskFolder & vbCrLf
+                report = report & "[INFO] Total scheduled tasks: " & taskFiles.Files.Count & vbCrLf
+            End If
+
+            ' PATH Hijacking
+            report = report & vbCrLf & "--- PATH HIJACKING POTENTIAL ---" & vbCrLf
+            Dim pathEnv, pathDirs, pd, writablePaths
+            pathEnv = shell.ExpandEnvironmentStrings("%PATH%")
+            pathDirs = Split(pathEnv, ";")
+            writablePaths = 0
+            For Each pd In pathDirs
+                If pd <> "" And fso.FolderExists(pd) Then
+                    If InStr(LCase(pd), "c:\windows") = 0 And InStr(LCase(pd), "c:\program files") = 0 Then
+                        report = report & "[CHECK] Non-system PATH: " & pd & vbCrLf
+                        writablePaths = writablePaths + 1
+                    End If
+                End If
+            Next
+            If writablePaths > 0 Then
+                report = report & "[RISK] " & writablePaths & " potentially writable PATH directories" & vbCrLf
+            End If
+
+            ' ===== MODULE 4: DATA EXFILTRATION PATHS =====
+            Log "[13/26] Data Exfiltration Paths..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "DATA EXFILTRATION PATHS" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' USB Policy
+            report = report & vbCrLf & "--- USB STORAGE POLICY ---" & vbCrLf
+            Dim usbDeny
+            usbDeny = shell.RegRead("HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR\Start")
+            If Err.Number = 0 Then
+                If usbDeny = 4 Then
+                    report = report & "[OK] USB Storage: Disabled" & vbCrLf
+                Else
+                    report = report & "[RISK] USB Storage: Enabled (Start=" & usbDeny & ")" & vbCrLf
+                    Log "  [!] USB storage enabled"
+                    AddFinding 5, "Data Exfiltration", "USB Storage Devices Allowed", _
+                        "USB storage devices are not blocked. This allows potential data exfiltration via removable media and introduces risk of malware infection from unauthorized USB devices.", _
+                        "Disable USB storage via Group Policy or set HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR\Start to 4. Consider implementing USB device whitelisting for authorized devices."
+                End If
+            Else
+                report = report & "[RISK] USB Storage: Default (Enabled)" & vbCrLf
+                AddFinding 5, "Data Exfiltration", "USB Storage Devices Allowed", _
+                    "USB storage devices are not blocked (default configuration). This allows potential data exfiltration and malware introduction via removable media.", _
+                    "Disable USB storage via Group Policy or registry. Implement device control policies."
+                Err.Clear
+            End If
+
+            ' Cloud Storage Clients
+            report = report & vbCrLf & "--- CLOUD STORAGE CLIENTS ---" & vbCrLf
+            Dim cloudPaths
+            cloudPaths = Array( _
+                Array(userProfile & "\OneDrive", "OneDrive"), _
+                Array(userProfile & "\Dropbox", "Dropbox"), _
+                Array(userProfile & "\Google Drive", "Google Drive"), _
+                Array(userProfile & "\Box", "Box") _
+            )
+            Dim cp
+            For Each cp In cloudPaths
+                If fso.FolderExists(cp(0)) Then
+                    report = report & "[FOUND] " & cp(1) & ": " & cp(0) & vbCrLf
+                    Log "  [!] Cloud client: " & cp(1)
+                End If
+            Next
+
+            ' Email Clients and PST files
+            report = report & vbCrLf & "--- EMAIL DATA ---" & vbCrLf
+            Dim pstPath, ostPath
+            pstPath = userProfile & "\AppData\Local\Microsoft\Outlook"
+            If fso.FolderExists(pstPath) Then
+                report = report & "[FOUND] Outlook data folder: " & pstPath & vbCrLf
+                Dim outlookFolder, outlookFile
+                Set outlookFolder = fso.GetFolder(pstPath)
+                For Each outlookFile In outlookFolder.Files
+                    If LCase(fso.GetExtensionName(outlookFile.Name)) = "pst" Or LCase(fso.GetExtensionName(outlookFile.Name)) = "ost" Then
+                        report = report & "[FOUND] Email archive: " & outlookFile.Name & " (" & Int(outlookFile.Size/1048576) & " MB)" & vbCrLf
+                    End If
+                Next
+            End If
+
+            ' Internet Connectivity Test
+            report = report & vbCrLf & "--- OUTBOUND CONNECTIVITY ---" & vbCrLf
+            report = report & "[INFO] Check firewall rules for outbound restrictions" & vbCrLf
+            report = report & "[INFO] Common exfil ports: 80, 443, 53 (DNS), 22 (SSH)" & vbCrLf
+
+            ' ===== MODULE 5: PERSISTENCE MECHANISMS =====
+            Log "[14/26] Persistence Mechanisms..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "PERSISTENCE MECHANISMS" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' Startup Folders
+            report = report & vbCrLf & "--- STARTUP FOLDERS ---" & vbCrLf
+            Dim startupPaths, sup
+            startupPaths = Array( _
+                userProfile & "\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup", _
+                "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup" _
+            )
+            For Each sup In startupPaths
+                If fso.FolderExists(sup) Then
+                    report = report & "[ACCESSIBLE] " & sup & vbCrLf
+                    Dim supFolder
+                    Set supFolder = fso.GetFolder(sup)
+                    If supFolder.Files.Count > 0 Then
+                        Dim supFile
+                        For Each supFile In supFolder.Files
+                            report = report & "  - " & supFile.Name & vbCrLf
+                        Next
+                    End If
+                End If
+            Next
+
+            ' Registry Run Keys
+            report = report & vbCrLf & "--- REGISTRY RUN KEYS ---" & vbCrLf
+            Dim runKeys, rk, rkVal
+            runKeys = Array( _
+                "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run", _
+                "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run", _
+                "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce", _
+                "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce" _
+            )
+            For Each rk In runKeys
+                report = report & "[KEY] " & rk & vbCrLf
+            Next
+            report = report & "[INFO] Run keys are writable for persistence" & vbCrLf
+
+            ' WMI Persistence
+            report = report & vbCrLf & "--- WMI EVENT SUBSCRIPTIONS ---" & vbCrLf
+            Dim wmiEvents
+            Set wmiEvents = wmi.ExecQuery("SELECT * FROM __EventConsumer")
+            Dim wmiEventCount
+            wmiEventCount = 0
+            For Each ev In wmiEvents
+                wmiEventCount = wmiEventCount + 1
+            Next
+            report = report & "[INFO] WMI Event Consumers: " & wmiEventCount & vbCrLf
+
+            ' ===== MODULE 6: NETWORK SEGMENTATION =====
+            Log "[15/26] Network Segmentation..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "NETWORK SEGMENTATION ANALYSIS" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' Get local IP and subnet
+            report = report & vbCrLf & "--- LOCAL NETWORK POSITION ---" & vbCrLf
+            Dim netAdapters
+            Set netAdapters = wmi.ExecQuery("SELECT IPAddress, IPSubnet, DefaultIPGateway FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled=True")
+            For Each na In netAdapters
+                If Not IsNull(na.IPAddress) Then
+                    report = report & "Local IP: " & na.IPAddress(0) & vbCrLf
+                    If Not IsNull(na.IPSubnet) Then
+                        report = report & "Subnet: " & na.IPSubnet(0) & vbCrLf
+                    End If
+                End If
+            Next
+
+            ' Critical Server Access Test
+            report = report & vbCrLf & "--- CRITICAL SERVER ACCESS ---" & vbCrLf
+            If domainDN <> "" Then
+                ' Test DC access
+                Dim dcList
+                Set dcList = wmi.ExecQuery("SELECT DomainControllerName FROM Win32_NTDomain WHERE DomainControllerName IS NOT NULL")
+                For Each dcItem In dcList
+                    Dim dcName
+                    dcName = Replace(dcItem.DomainControllerName, "\\", "")
+                    If dcName <> "" Then
+                        If fso.FolderExists("\\" & dcName & "\SYSVOL") Then
+                            report = report & "[ACCESSIBLE] DC SYSVOL: \\" & dcName & "\SYSVOL" & vbCrLf
+                        End If
+                        If fso.FolderExists("\\" & dcName & "\NETLOGON") Then
+                            report = report & "[ACCESSIBLE] DC NETLOGON: \\" & dcName & "\NETLOGON" & vbCrLf
+                        End If
+                    End If
+                Next
+            End If
+
+            report = report & vbCrLf & "[INFO] Check if workstation can reach:" & vbCrLf
+            report = report & "  - Database servers (1433, 3306, 5432, 1521)" & vbCrLf
+            report = report & "  - Management interfaces (iLO, DRAC, vSphere)" & vbCrLf
+            report = report & "  - Linux servers (SSH 22)" & vbCrLf
+
+            ' ===== MODULE 7: MISSING SECURITY CONTROLS =====
+            Log "[16/26] Missing Security Controls..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "MISSING SECURITY CONTROLS" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' Credential Guard / LSASS Protection
+            report = report & vbCrLf & "--- CREDENTIAL PROTECTION ---" & vbCrLf
+            Dim credGuard
+            credGuard = shell.RegRead("HKLM\SYSTEM\CurrentControlSet\Control\LSA\LsaCfgFlags")
+            If Err.Number = 0 And credGuard > 0 Then
+                report = report & "[OK] Credential Guard: Enabled" & vbCrLf
+            Else
+                report = report & "[RISK] Credential Guard: Not enabled" & vbCrLf
+                report = report & "  -> LSASS memory can be dumped (Mimikatz)" & vbCrLf
+                AddFinding 8, "Credential Protection", "Credential Guard Not Enabled", _
+                    "Windows Credential Guard is not enabled. LSASS process memory can be dumped using tools like Mimikatz to extract plaintext passwords, NTLM hashes, and Kerberos tickets. This is a primary technique for credential theft and lateral movement.", _
+                    "Enable Credential Guard via Group Policy: Computer Configuration > Administrative Templates > System > Device Guard > Turn On Virtualization Based Security. Requires compatible hardware (UEFI, TPM 2.0)."
+                Err.Clear
+            End If
+
+            Dim lsaPPL
+            lsaPPL = shell.RegRead("HKLM\SYSTEM\CurrentControlSet\Control\LSA\RunAsPPL")
+            If Err.Number = 0 And lsaPPL = 1 Then
+                report = report & "[OK] LSA Protection (PPL): Enabled" & vbCrLf
+            Else
+                report = report & "[RISK] LSA Protection (PPL): Not enabled" & vbCrLf
+                AddFinding 7, "Credential Protection", "LSA Protection (PPL) Not Enabled", _
+                    "LSA Protection (Protected Process Light) is not enabled. The LSASS process is vulnerable to memory injection and credential dumping attacks. Attackers can read credentials directly from memory.", _
+                    "Enable LSA Protection: Set HKLM\SYSTEM\CurrentControlSet\Control\LSA\RunAsPPL to 1 (DWORD). Requires reboot. Test compatibility with security software before deployment."
+                Err.Clear
+            End If
+
+            ' AppLocker / WDAC
+            report = report & vbCrLf & "--- APPLICATION CONTROL ---" & vbCrLf
+            Dim applockerSvc
+            Set applockerSvc = wmi.ExecQuery("SELECT State FROM Win32_Service WHERE Name='AppIDSvc'")
+            For Each als In applockerSvc
+                If als.State = "Running" Then
+                    report = report & "[INFO] AppLocker Service: Running" & vbCrLf
+                Else
+                    report = report & "[RISK] AppLocker Service: " & als.State & vbCrLf
+                End If
+            Next
+
+            ' PowerShell Constrained Language Mode
+            report = report & vbCrLf & "--- POWERSHELL RESTRICTIONS ---" & vbCrLf
+            Dim psTranscript
+            psTranscript = shell.RegRead("HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription\EnableTranscripting")
+            If Err.Number = 0 And psTranscript = 1 Then
+                report = report & "[OK] PowerShell Transcription: Enabled" & vbCrLf
+            Else
+                report = report & "[RISK] PowerShell Transcription: Not enabled" & vbCrLf
+                Err.Clear
+            End If
+
+            Dim psLogging
+            psLogging = shell.RegRead("HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging\EnableScriptBlockLogging")
+            If Err.Number = 0 And psLogging = 1 Then
+                report = report & "[OK] PowerShell Script Block Logging: Enabled" & vbCrLf
+            Else
+                report = report & "[RISK] PowerShell Script Block Logging: Not enabled" & vbCrLf
+                Err.Clear
+            End If
+
+            ' Windows Defender Status
+            report = report & vbCrLf & "--- WINDOWS DEFENDER ---" & vbCrLf
+            Dim defenderStatus
+            defenderStatus = shell.RegRead("HKLM\SOFTWARE\Microsoft\Windows Defender\DisableAntiSpyware")
+            If Err.Number = 0 And defenderStatus = 1 Then
+                report = report & "[CRITICAL] Windows Defender: DISABLED" & vbCrLf
+                Log "  [!!] Windows Defender DISABLED!"
+                AddFinding 9, "Endpoint Protection", "Windows Defender Disabled", _
+                    "CRITICAL: Windows Defender has been disabled via policy. The system has no built-in malware protection. This may indicate an active compromise or misconfiguration that leaves the system vulnerable to malware.", _
+                    "IMMEDIATELY investigate why Defender is disabled. Re-enable via Group Policy or remove the DisableAntiSpyware registry key. Check for signs of compromise. Ensure alternative AV is running if intentionally disabled."
+            Else
+                report = report & "[OK] Windows Defender: Not disabled via policy" & vbCrLf
+                Err.Clear
+            End If
+
+            ' Check Defender Exclusions
+            Dim defExclPath
+            defExclPath = "HKLM\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths"
+            report = report & "[INFO] Check Defender exclusions at: " & defExclPath & vbCrLf
+
+            ' Audit Policy
+            report = report & vbCrLf & "--- AUDIT POLICY ---" & vbCrLf
+            report = report & "[INFO] Check with: auditpol /get /category:*" & vbCrLf
+            report = report & "[INFO] Critical events to monitor:" & vbCrLf
+            report = report & "  - 4624/4625: Logon success/failure" & vbCrLf
+            report = report & "  - 4648: Explicit credential logon" & vbCrLf
+            report = report & "  - 4672: Admin logon" & vbCrLf
+            report = report & "  - 4688: Process creation" & vbCrLf
+
+            ' ===== MODULE 8: SENSITIVE DATA DISCOVERY =====
+            Log "[17/26] Sensitive Data Discovery..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "SENSITIVE DATA DISCOVERY" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' Config files with passwords
+            report = report & vbCrLf & "--- CONFIG FILES (Password Indicators) ---" & vbCrLf
+            Dim configExts, configPaths, cPath, cExt
+            configExts = Array("config", "ini", "xml", "json", "yaml", "yml", "conf", "cfg")
+            configPaths = Array( _
+                "C:\inetpub", _
+                "C:\xampp", _
+                "C:\wamp", _
+                userProfile & "\AppData" _
+            )
+
+            For Each cPath In configPaths
+                If fso.FolderExists(cPath) Then
+                    report = report & "[CHECK] Config path exists: " & cPath & vbCrLf
+                End If
+            Next
+
+            ' Web.config files
+            If fso.FolderExists("C:\inetpub\wwwroot") Then
+                report = report & "[FOUND] IIS wwwroot exists - check for web.config files" & vbCrLf
+                Log "  [!] IIS wwwroot found"
+            End If
+
+            ' Private Keys
+            report = report & vbCrLf & "--- PRIVATE KEY FILES ---" & vbCrLf
+            Dim keyExts, keySearchPaths
+            keyExts = Array(".pem", ".key", ".pfx", ".p12", ".ppk", ".id_rsa")
+
+            Dim sshPath
+            sshPath = userProfile & "\.ssh"
+            If fso.FolderExists(sshPath) Then
+                report = report & "[FOUND] SSH directory: " & sshPath & vbCrLf
+                Dim sshFolder, sshFile
+                Set sshFolder = fso.GetFolder(sshPath)
+                For Each sshFile In sshFolder.Files
+                    report = report & "  - " & sshFile.Name & vbCrLf
+                    Log "  [!] SSH file: " & sshFile.Name
+                Next
+            End If
+
+            ' Database Connection Strings
+            report = report & vbCrLf & "--- DATABASE INDICATORS ---" & vbCrLf
+            Dim odbcDsn
+            odbcDsn = "HKLM\SOFTWARE\ODBC\ODBC.INI\ODBC Data Sources"
+            report = report & "[INFO] Check ODBC DSNs at: " & odbcDsn & vbCrLf
+
+            ' Sensitive file patterns on network drives
+            report = report & vbCrLf & "--- SENSITIVE FILE PATTERNS ---" & vbCrLf
+            report = report & "[INFO] Patterns to search in network_files.csv:" & vbCrLf
+            report = report & "  - *password*, *credential*, *secret*" & vbCrLf
+            report = report & "  - *.kdbx (KeePass), *.1pif (1Password)" & vbCrLf
+            report = report & "  - *backup*.sql, *dump*.sql" & vbCrLf
+            report = report & "  - *.bak, *.old (backup files)" & vbCrLf
+            report = report & "  - *TCKN*, *TC Kimlik*, *personnel*" & vbCrLf
+
+            ' ===== MODULE 9: EMAIL SECURITY =====
+            Log "[18/26] Email Security Analysis..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "EMAIL SECURITY ANALYSIS" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' Get domain for email checks
+            report = report & vbCrLf & "--- EMAIL DOMAIN INFO ---" & vbCrLf
+            Dim emailDomain
+            emailDomain = shell.ExpandEnvironmentStrings("%USERDNSDOMAIN%")
+            If emailDomain <> "" And emailDomain <> "%USERDNSDOMAIN%" Then
+                report = report & "Primary Domain: " & emailDomain & vbCrLf
+                report = report & vbCrLf & "[MANUAL CHECK REQUIRED]" & vbCrLf
+                report = report & "Run these commands to check email security:" & vbCrLf
+                report = report & vbCrLf & "SPF Record:" & vbCrLf
+                report = report & "  nslookup -type=txt " & emailDomain & vbCrLf
+                report = report & "  Look for: v=spf1 ..." & vbCrLf
+                report = report & vbCrLf & "DMARC Record:" & vbCrLf
+                report = report & "  nslookup -type=txt _dmarc." & emailDomain & vbCrLf
+                report = report & "  Look for: v=DMARC1; p=reject/quarantine/none" & vbCrLf
+                report = report & vbCrLf & "DKIM Selector (common):" & vbCrLf
+                report = report & "  nslookup -type=txt selector1._domainkey." & emailDomain & vbCrLf
+                report = report & "  nslookup -type=txt google._domainkey." & emailDomain & vbCrLf
+                report = report & vbCrLf & "[RISK INDICATORS]" & vbCrLf
+                report = report & "  - No SPF = Email spoofing possible" & vbCrLf
+                report = report & "  - SPF with ~all (softfail) = Weak protection" & vbCrLf
+                report = report & "  - No DMARC = No spoofing reports/enforcement" & vbCrLf
+                report = report & "  - DMARC p=none = Monitoring only, no protection" & vbCrLf
+            Else
+                report = report & "Domain not detected for email checks" & vbCrLf
+            End If
+
+            ' Check for mail client configurations
+            report = report & vbCrLf & "--- MAIL CLIENT CONFIG ---" & vbCrLf
+            Dim outlookProfiles
+            outlookProfiles = "HKCU\SOFTWARE\Microsoft\Office\16.0\Outlook\Profiles"
+            report = report & "[INFO] Outlook profiles at: " & outlookProfiles & vbCrLf
+
+            ' Exchange Server Detection
+            report = report & vbCrLf & "--- EXCHANGE SERVER ---" & vbCrLf
+            Dim exchServer
+            exchServer = shell.RegRead("HKCU\SOFTWARE\Microsoft\Exchange\Exchange Provider\Server Name")
+            If Err.Number = 0 Then
+                report = report & "[FOUND] Exchange Server: " & exchServer & vbCrLf
+                Log "  [!] Exchange: " & exchServer
+            Else
+                report = report & "Exchange server not configured in registry" & vbCrLf
+                Err.Clear
+            End If
+
+            ' MX Record info
+            report = report & vbCrLf & "--- MX RECORD CHECK ---" & vbCrLf
+            report = report & "[MANUAL] nslookup -type=mx " & emailDomain & vbCrLf
+            report = report & "[INFO] Check if MX points to:" & vbCrLf
+            report = report & "  - On-premise Exchange" & vbCrLf
+            report = report & "  - Office 365 (*.mail.protection.outlook.com)" & vbCrLf
+            report = report & "  - Google Workspace (*.google.com)" & vbCrLf
+            report = report & "  - Third-party gateway (Proofpoint, Mimecast, etc.)" & vbCrLf
+
+            ' ===== MODULE 10: FIREWALL BYPASS POTENTIAL =====
+            Log "[19/26] Firewall Bypass Potential..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "FIREWALL BYPASS POTENTIAL" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' DNS Tunneling Potential
+            report = report & vbCrLf & "--- DNS TUNNELING ---" & vbCrLf
+            report = report & "[INFO] DNS (UDP/TCP 53) is rarely blocked" & vbCrLf
+            report = report & "[INFO] Tools: iodine, dnscat2, dns2tcp" & vbCrLf
+            report = report & "[TEST] nslookup test.domain.com" & vbCrLf
+
+            ' Get DNS servers
+            Dim dnsServers
+            Set dnsServers = wmi.ExecQuery("SELECT DNSServerSearchOrder FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled=True")
+            For Each dnsConfig In dnsServers
+                If Not IsNull(dnsConfig.DNSServerSearchOrder) Then
+                    For Each dnsServer In dnsConfig.DNSServerSearchOrder
+                        report = report & "[DNS Server] " & dnsServer & vbCrLf
+                    Next
+                End If
+            Next
+
+            ' ICMP Tunneling
+            report = report & vbCrLf & "--- ICMP TUNNELING ---" & vbCrLf
+            report = report & "[INFO] ICMP (ping) may bypass firewalls" & vbCrLf
+            report = report & "[INFO] Tools: icmpsh, ptunnel, icmptunnel" & vbCrLf
+            report = report & "[TEST] ping 8.8.8.8 -n 1" & vbCrLf
+
+            ' HTTP/HTTPS Tunneling
+            report = report & vbCrLf & "--- HTTP/S TUNNELING ---" & vbCrLf
+            report = report & "[INFO] HTTP (80) and HTTPS (443) usually allowed" & vbCrLf
+            report = report & "[INFO] Tools: Chisel, reGeorg, ABPTTS, Neo-reGeorg" & vbCrLf
+
+            ' Proxy Detection
+            report = report & vbCrLf & "--- PROXY CONFIGURATION ---" & vbCrLf
+            Dim proxyEnabled, proxyServer
+            proxyEnabled = shell.RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings\ProxyEnable")
+            If Err.Number = 0 And proxyEnabled = 1 Then
+                proxyServer = shell.RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings\ProxyServer")
+                report = report & "[FOUND] Proxy Enabled: " & proxyServer & vbCrLf
+                report = report & "[INFO] Traffic inspection likely - use HTTPS" & vbCrLf
+                Log "  [!] Proxy: " & proxyServer
+            Else
+                report = report & "No system proxy configured" & vbCrLf
+                Err.Clear
+            End If
+
+            ' PAC File
+            Dim pacUrl
+            pacUrl = shell.RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings\AutoConfigURL")
+            If Err.Number = 0 And pacUrl <> "" Then
+                report = report & "[FOUND] PAC/WPAD URL: " & pacUrl & vbCrLf
+            Else
+                Err.Clear
+            End If
+
+            ' WebSocket potential
+            report = report & vbCrLf & "--- WEBSOCKET TUNNELING ---" & vbCrLf
+            report = report & "[INFO] WebSockets (ws/wss) may bypass inspection" & vbCrLf
+            report = report & "[INFO] Tools: wstunnel, websocat" & vbCrLf
+
+            ' Common bypass ports
+            report = report & vbCrLf & "--- ALTERNATE PORTS TO TEST ---" & vbCrLf
+            report = report & "[TEST] These ports are often allowed:" & vbCrLf
+            report = report & "  - 80 (HTTP)" & vbCrLf
+            report = report & "  - 443 (HTTPS)" & vbCrLf
+            report = report & "  - 53 (DNS)" & vbCrLf
+            report = report & "  - 8080, 8443 (Alt HTTP/S)" & vbCrLf
+            report = report & "  - 587, 465 (SMTP)" & vbCrLf
+            report = report & "  - 993, 995 (IMAP/POP3 SSL)" & vbCrLf
+
+            ' ===== MODULE 11: OUTBOUND CONNECTION TEST =====
+            Log "[20/26] Outbound Connection Test..."
+            report = report & vbCrLf & "========================================" & vbCrLf
+            report = report & "OUTBOUND CONNECTION TEST" & vbCrLf
+            report = report & "========================================" & vbCrLf
+
+            ' Test common outbound connections using WMI Ping
+            report = report & vbCrLf & "--- ICMP CONNECTIVITY TEST ---" & vbCrLf
+            Dim pingTargets, pingTarget
+            pingTargets = Array("8.8.8.8", "1.1.1.1", "208.67.222.222")
+
+            For Each pingTarget In pingTargets
+                Dim pingResult
+                Set pingResult = wmi.ExecQuery("SELECT StatusCode FROM Win32_PingStatus WHERE Address='" & pingTarget & "' AND Timeout=1000")
+                For Each pr In pingResult
+                    If pr.StatusCode = 0 Then
+                        report = report & "[OK] Ping to " & pingTarget & ": Success" & vbCrLf
+                    Else
+                        report = report & "[BLOCKED] Ping to " & pingTarget & ": Failed (Code=" & pr.StatusCode & ")" & vbCrLf
+                    End If
+                Next
+            Next
+
+            ' DNS Resolution Test
+            report = report & vbCrLf & "--- DNS RESOLUTION TEST ---" & vbCrLf
+            Dim dnsTestDomains
+            dnsTestDomains = Array("google.com", "microsoft.com", "github.com")
+            For Each testDomain In dnsTestDomains
+                Set pingResult = wmi.ExecQuery("SELECT ProtocolAddress FROM Win32_PingStatus WHERE Address='" & testDomain & "' AND Timeout=2000")
+                For Each pr In pingResult
+                    If Not IsNull(pr.ProtocolAddress) Then
+                        report = report & "[OK] DNS " & testDomain & " -> " & pr.ProtocolAddress & vbCrLf
+                    Else
+                        report = report & "[BLOCKED] DNS " & testDomain & " -> Failed" & vbCrLf
+                    End If
+                Next
+            Next
+
+            ' HTTP Connectivity (using XMLHTTP)
+            report = report & vbCrLf & "--- HTTP/HTTPS CONNECTIVITY ---" & vbCrLf
+            Dim httpTests, httpTest, xmlHttp
+            httpTests = Array( _
+                Array("http://detectportal.firefox.com/success.txt", "HTTP"), _
+                Array("https://www.google.com/generate_204", "HTTPS") _
+            )
+
+            For Each httpTest In httpTests
+                On Error Resume Next
+                Set xmlHttp = CreateObject("MSXML2.XMLHTTP.6.0")
+                xmlHttp.Open "GET", httpTest(0), False
+                xmlHttp.setRequestHeader "User-Agent", "Mozilla/5.0"
+                xmlHttp.Send
+                If Err.Number = 0 Then
+                    If xmlHttp.Status >= 200 And xmlHttp.Status < 400 Then
+                        report = report & "[OK] " & httpTest(1) & " outbound: Success (Status=" & xmlHttp.Status & ")" & vbCrLf
+                        Log "  [+] " & httpTest(1) & " outbound works"
+                    Else
+                        report = report & "[BLOCKED] " & httpTest(1) & " outbound: Status=" & xmlHttp.Status & vbCrLf
+                    End If
+                Else
+                    report = report & "[BLOCKED] " & httpTest(1) & " outbound: " & Err.Description & vbCrLf
+                    Err.Clear
+                End If
+                Set xmlHttp = Nothing
+            Next
+
+            ' Reverse Shell Port Summary
+            report = report & vbCrLf & "--- REVERSE SHELL POTENTIAL ---" & vbCrLf
+            report = report & "[INFO] Based on tests above, potential C2 channels:" & vbCrLf
+            report = report & "  - If ICMP works: icmpsh, icmptunnel" & vbCrLf
+            report = report & "  - If DNS works: dnscat2, iodine" & vbCrLf
+            report = report & "  - If HTTP/S works: meterpreter/reverse_https, Cobalt Strike" & vbCrLf
+            report = report & "  - If Proxy exists: Configure C2 to use proxy" & vbCrLf
+            report = report & vbCrLf & "[COMMON REVERSE SHELL PORTS]" & vbCrLf
+            report = report & "  - 443 (HTTPS - looks like normal traffic)" & vbCrLf
+            report = report & "  - 80 (HTTP - may be inspected)" & vbCrLf
+            report = report & "  - 53 (DNS - usually allowed)" & vbCrLf
+            report = report & "  - 8080, 8443 (Alt ports)" & vbCrLf
+
+            ' Egress Filtering Summary
+            report = report & vbCrLf & "--- EGRESS FILTERING ASSESSMENT ---" & vbCrLf
+            report = report & "[INFO] Check Windows Firewall outbound rules:" & vbCrLf
+            report = report & "  netsh advfirewall firewall show rule dir=out" & vbCrLf
+
+            On Error Resume Next
+
             ' Trust Relationships
-            Log "[10/15] Active Directory - Trust Relationships..."
+            Log "[21/26] Active Directory - Trust Relationships..."
             report = report & vbCrLf & "--- TRUST RELATIONSHIPS ---" & vbCrLf
             Dim objTrusts
             Set objTrusts = wmi.ExecQuery("SELECT * FROM Win32_NTDomain WHERE DomainName IS NOT NULL")
@@ -409,7 +1347,7 @@
             Next
 
             ' Network Info
-            Log "[11/15] Collecting Network Info..."
+            Log "[22/26] Collecting Network Info..."
             report = report & vbCrLf & "========================================" & vbCrLf
             report = report & "NETWORK INFORMATION" & vbCrLf
             report = report & "========================================" & vbCrLf
@@ -437,7 +1375,7 @@
             Next
 
             ' Local Users and Groups
-            Log "[12/15] Collecting Local Users & Groups..."
+            Log "[23/26] Collecting Local Users & Groups..."
             report = report & vbCrLf & "--- LOCAL USERS ---" & vbCrLf
             Set users = wmi.ExecQuery("SELECT * FROM Win32_UserAccount WHERE LocalAccount=True")
             For Each usr In users
@@ -451,7 +1389,7 @@
             Next
 
             ' Processes
-            Log "[13/15] Collecting Running Processes..."
+            Log "[24/26] Collecting Running Processes..."
             report = report & vbCrLf & "--- RUNNING PROCESSES ---" & vbCrLf
             Set procs = wmi.ExecQuery("SELECT Name, ProcessId, ExecutablePath FROM Win32_Process")
             Dim procCount
@@ -464,7 +1402,7 @@
             Next
 
             ' Services
-            Log "[14/15] Collecting Services..."
+            Log "[25/26] Collecting Services..."
             report = report & vbCrLf & "--- RUNNING SERVICES ---" & vbCrLf
             Set services = wmi.ExecQuery("SELECT Name, DisplayName, StartName FROM Win32_Service WHERE State='Running'")
             For Each svc In services
@@ -472,7 +1410,7 @@
             Next
 
             ' Shares and Security
-            Log "[15/15] Collecting Shares & Security Status..."
+            Log "[26/26] Collecting Shares & Security Status..."
             report = report & vbCrLf & "--- LOCAL SHARES ---" & vbCrLf
             Set shares = wmi.ExecQuery("SELECT Name, Path, Description FROM Win32_Share")
             For Each sh In shares
@@ -494,18 +1432,60 @@
             reportFile.Write report
             reportFile.Close
 
+            ' ===== GENERATE FINDINGS REPORT =====
+            Dim findingsReport, critCount, highCount, medCount, lowCount
+            critCount = 0 : highCount = 0 : medCount = 0 : lowCount = 0
+
+            findingsReport = "================================================================================" & vbCrLf
+            findingsReport = findingsReport & "SECURITY FINDINGS REPORT - RISK ASSESSMENT" & vbCrLf
+            findingsReport = findingsReport & "================================================================================" & vbCrLf
+            findingsReport = findingsReport & "Generated: " & Now() & vbCrLf
+            findingsReport = findingsReport & "Target: " & shell.ExpandEnvironmentStrings("%COMPUTERNAME%") & vbCrLf
+            findingsReport = findingsReport & "Domain: " & shell.ExpandEnvironmentStrings("%USERDOMAIN%") & vbCrLf
+            findingsReport = findingsReport & "================================================================================" & vbCrLf
+            findingsReport = findingsReport & vbCrLf
+            findingsReport = findingsReport & "SEVERITY SCALE:" & vbCrLf
+            findingsReport = findingsReport & "  9-10 = CRITICAL : Immediate action required, active exploitation possible" & vbCrLf
+            findingsReport = findingsReport & "  7-8  = HIGH     : Serious risk, should be addressed urgently" & vbCrLf
+            findingsReport = findingsReport & "  4-6  = MEDIUM   : Moderate risk, plan remediation" & vbCrLf
+            findingsReport = findingsReport & "  1-3  = LOW      : Minor risk, address when convenient" & vbCrLf
+            findingsReport = findingsReport & vbCrLf
+            findingsReport = findingsReport & "================================================================================" & vbCrLf
+            findingsReport = findingsReport & "TOTAL FINDINGS: " & findingsCount & vbCrLf
+            findingsReport = findingsReport & "================================================================================" & vbCrLf
+            findingsReport = findingsReport & vbCrLf
+
+            If findingsCount > 0 Then
+                findingsReport = findingsReport & findings
+            Else
+                findingsReport = findingsReport & "No significant security findings detected." & vbCrLf
+            End If
+
+            findingsReport = findingsReport & vbCrLf
+            findingsReport = findingsReport & "================================================================================" & vbCrLf
+            findingsReport = findingsReport & "END OF FINDINGS REPORT" & vbCrLf
+            findingsReport = findingsReport & "================================================================================" & vbCrLf
+
+            Dim findingsFile
+            Set findingsFile = fso.CreateTextFile(desktopPath & "\security_findings.txt", True, True)
+            findingsFile.Write findingsReport
+            findingsFile.Close
+
             Log ""
             Log "============================================"
             Log "SECURITY AUDIT COMPLETE!"
             Log "============================================"
+            Log "Total Findings: " & findingsCount
+            Log ""
             Log "Reports saved to Desktop:"
             Log "  - network_drives.csv"
             Log "  - network_files.csv"
             Log "  - ad_users.csv (ALL domain users)"
             Log "  - ad_computers.csv (ALL domain computers)"
             Log "  - security_audit_report.txt"
+            Log "  - security_findings.txt (RISK ASSESSMENT)"
             Log ""
-            Log "Review the CSV files for detailed analysis."
+            Log "Review security_findings.txt for prioritized risks."
         End Sub
 
         Sub ScanFolder(folderPath, depth, ByRef csv, ByRef count)
